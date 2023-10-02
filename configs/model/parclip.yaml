@@ -1,0 +1,25 @@
+name: parclip
+_target_: strhub.models.parclip.system.PARCLIP
+
+# Data
+patch_size: [ 4, 8 ]  # [ height, width ]
+
+# Architecture
+embed_dim: 512
+enc_num_heads: 8
+enc_mlp_ratio: 4
+enc_depth: 12
+dec_num_heads: 8
+dec_mlp_ratio: 4
+dec_depth: 1
+
+# Training
+lr: 0.0002
+perm_num: 6
+perm_forward: false
+perm_mirrored: false
+dropout: 0.1
+
+# Decoding mode (test)
+decode_ar: false
+refine_iters: 0
