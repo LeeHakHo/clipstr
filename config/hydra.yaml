@@ -1,6 +1,6 @@
 hydra:
   run:
-    dir: /home/ohh/PycharmProject/PARCLIP
+    dir: /home/ohh/PycharmProject/clipseq
   sweep:
     dir: multirun/${model.name}/${now:%Y-%m-%d}_${now:%H-%M-%S}
     subdir: ${hydra.job.override_dirname}
@@ -110,17 +110,17 @@ hydra:
   output_subdir: config
   overrides:
     hydra:
-    - hydra.run.dir="/home/ohh/PycharmProject/PARCLIP"
+    - hydra.run.dir="/home/ohh/PycharmProject/clipseq"
     - hydra.job.name=train_ddp_process_7
     - hydra.mode=RUN
     task:
-    - +experiment=parseq
+    - +experiment=parclip
     - dataset=real
     - charset=36_lowercase
   job:
     name: train_ddp_process_7
     chdir: null
-    override_dirname: +experiment=parseq,charset=36_lowercase,dataset=real
+    override_dirname: +experiment=parclip,charset=36_lowercase,dataset=real
     id: ???
     num: ???
     config_name: main
@@ -134,23 +134,23 @@ hydra:
   runtime:
     version: 1.3.2
     version_base: '1.2'
-    cwd: /home/ohh/PycharmProject/PARCLIP
+    cwd: /home/ohh/PycharmProject/clipseq
     config_sources:
     - path: hydra.conf
       schema: pkg
       provider: hydra
-    - path: /home/ohh/PycharmProject/PARCLIP/configs
+    - path: /home/ohh/PycharmProject/clipseq/configs
       schema: file
       provider: main
     - path: ''
       schema: structured
       provider: schema
-    output_dir: /home/ohh/PycharmProject/PARCLIP
+    output_dir: /home/ohh/PycharmProject/clipseq
     choices:
-      experiment: parseq
+      experiment: parclip
       dataset: real
       charset: 36_lowercase
-      model: parseq
+      model: parclip
       hydra/env: default
       hydra/callbacks: null
       hydra/job_logging: default

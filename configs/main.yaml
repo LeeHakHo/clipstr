@@ -13,7 +13,7 @@ model:
 
   # For charset_test, ordering doesn't matter.
   charset_test: "0123456789abcdefghijklmnopqrstuvwxyz"
-  batch_size: 96
+  batch_size: 128
   weight_decay: 0.0
   warmup_pct: 0.075  # equivalent to 1.5 epochs of warm up
 

@@ -32,6 +32,7 @@ from strhub.models.utils import init_weights
 from .modules import DecoderLayer, Decoder, Encoder, TokenEmbedding
 
 from .CLIP import clip,model,simple_tokenizer
+from .simclr import SimCLR
 import torch
 
 import matplotlib.pyplot as plt
@@ -76,7 +77,7 @@ class PARCLIP(CrossEntropySystem):
         nn.init.trunc_normal_(self.pos_queries, std=.02)
 
         self.CLIPmodel, self.CLIPpreprocess = clip.load('ViT-B/16')
-
+        self.simclr = SimCLR(self._device)
         # 모델 파라미터 고정하기
         for param in self.CLIPmodel.parameters():
             #param.requires_grad = False
@@ -98,6 +99,8 @@ class PARCLIP(CrossEntropySystem):
         self.load_features = True
         self.use_gt = False
         self.seperate = False
+
+        self.criterion = torch.nn.CrossEntropyLoss().to(self._device)
 
         self.label = self.label_origin
         if self.load_features:
@@ -266,10 +269,6 @@ class PARCLIP(CrossEntropySystem):
         n = (gt != self.pad_id).sum().item()
         max_len = tgt.shape[1] -2 # exclude <eos> from count
 
-
-
-
-
         #out = self.forward(images, max_len)
         #forward 부분
         max_length = max_len
@@ -305,16 +304,29 @@ class PARCLIP(CrossEntropySystem):
         #print(out.shape, gt.shape)
         logits = out.flatten(end_dim=1)
         #print(logits.shape, gt.flatten().shape) #torch.Size([1664(고정), 37]) torch.Size([1024])
-        loss += n * F.cross_entropy(logits, gt.flatten(), ignore_index=self.pad_id)
-        loss_numel += n
+        loss = loss + (n * F.cross_entropy(logits, gt.flatten(), ignore_index=self.pad_id))
+        loss_numel = loss_numel + n
 
         #tgt_out = torch.where(tgt_out == self.eos_id, self.pad_id, tgt_out)
         #n = (tgt_out != self.pad_id).sum().item()
 
         #loss = F.cross_entropy(logits, gt.flatten(), ignore_index=self.pad_id)
+
+
+                
+        from torch.cuda.amp import GradScaler, autocast
+        torch.autograd.set_detect_anomaly(True)
+        x, con_labels = self.simclr.info_nce_loss(x)
+        con_labels = con_labels.to(self._device)
+        #con_loss = self.criterion(x, con_labels)
+        #scaler = GradScaler(enabled=True)
+        #con_loss = scaler.scale(con_loss)
+        loss += 0.1* n * F.cross_entropy(x, con_labels, ignore_index=self.pad_id)
+
+
         loss /= loss_numel
+        total_loss = loss #+ con_loss
 
-
-        self.log('loss', loss)
+        self.log('loss', total_loss)
         #print(loss) #tensor(4.1242, device='cuda:6', grad_fn=<DivBackward0>)
-        return loss
+        return total_loss
