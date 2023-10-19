@@ -355,18 +355,10 @@ class CLIP(nn.Module):
         x = self.ln_final(x).type(self.dtype)
         #nld = x
         # x.shape = [batch_size, n_ctx, transformer.width]
+
         # take features from the eot embedding (eot_token is the highest number in each sequence)
-
-        #print(torch.arange(x.shape[0]).shape)
-        #print(text.argmax(dim=-1).shape)
-        #print(x[torch.arange(x.shape[0]), text.argmax(dim=-1)].shape)
-
-        # torch.Size([1])
-        # torch.Size([1])
-        # torch.Size([1,512])
-        
-
         #x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
+
         return x#, nld
     
     def forward(self, image, text):

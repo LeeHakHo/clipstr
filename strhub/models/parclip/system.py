@@ -33,7 +33,7 @@ from .modules import DecoderLayer, Decoder, Encoder, TokenEmbedding
 
 from .CLIP import clip,model,simple_tokenizer
 from .simclr import SimCLR
-from .coop import TextEncoder, PromptLearner
+#from .coop import TextEncoder, PromptLearner
 import torch
 
 import matplotlib.pyplot as plt
@@ -79,6 +79,7 @@ class PARCLIP(CrossEntropySystem):
 
         self.CLIPmodel, _ = clip.load('ViT-B/16')
         #self.simclr = SimCLR(self._device)
+
         # 모델 파라미터 고정하기
         for param in self.CLIPmodel.parameters():
             #param.requires_grad = False
@@ -91,37 +92,42 @@ class PARCLIP(CrossEntropySystem):
         #                        mlp_ratio=enc_mlp_ratio)
 
         dic = simple_tokenizer.SimpleTokenizer(max_label_length= self.max_label_length, charset = self.charset_train)
-        self.label_origin = dic.getLabelVocab()
+        label_origin = dic.getLabelVocab() #label 가져오기
         
 
-        self.new = True
+        self.new = True #첫번째 batch에서 encode를 한번만 하기 위한변수
         #Leehakho
-        self.padding = False
-        self.load_features = False
-        self.use_gt = False
-        self.seperate = False
-        self.text_pmt =True
-        self.text_projection = self.CLIPmodel.text_projection
-        #self.criterion = torch.nn.CrossEntropyLoss().to(self._device)
-        self.text_prompt = nn.Parameter(torch.randn([1, 4, 512]))
-        
-        self.label = self.label_origin
+        self.padding = False #inference에 padding값을 넣을지
+        self.load_features = False #저장된 text encode를 가져올지
+        self.seperate = False #encode할때 text를 나눠서 하기
+        self.text_pmt = True #text_rpompt 사용 여부
+        self.load = True #text prompt를 위한 unnormalized feature를 load할지 여부
+        self.label = label_origin
+
+        if  self.text_pmt2 or self.text_pmt:
+            self.text_prompt = nn.Parameter(torch.randn([1, 4, 512]))
+
         if self.load_features:
             # 파일에서 텐서를 불러오기
-            self.text_features = features = torch.load('real_seperate.pth').to(self._device)
+            self.text_features = torch.load('real_seperate.pth').to(self._device)
             #number = ["60000", "87837"]
             #for num in number:
             #    temp = torch.load('text_features_new_' + num + '.pth').to(self._device)
             #    features = torch.cat((features, temp), axis=0)
             #self.tm = self.text_features
         elif self.text_pmt:
-            self.label = self.label_origin =  self.label = random.sample(self.label_origin, 30000)
+            if self.load:
+                self.text_features_tensor = torch.load('unnormal_seperate.pth').to(self._device)
+                rest = torch.load('unnormal_seperate_2.pth').to(self._device)
+                self.text_features_tensor = torch.cat((self.text_features_tensor, rest), dim=0)
+            self.text_projection = self.CLIPmodel.text_projection
+            self.label = label_origin
+            print(len(self.label))
             self.text_token =[]
             for l in self.label:
                 a = []
                 a.append(l)
-                self.text_token.append(torch.cat([clip.tokenize(f"{c}") for c in a]).to(self._device))
-            
+                self.text_token.append(torch.cat([clip.tokenize(f"{c}") for c in a]))
         else:
             if self.seperate:
                 print(len(self.label))
@@ -131,7 +137,7 @@ class PARCLIP(CrossEntropySystem):
                     a.append(l)
                     self.text_token.append(torch.cat([clip.tokenize(f"word {c}") for c in a]).to(self._device))
             else:
-                self.label = random.sample(self.label_origin, 3000)
+                self.label = random.sample(self.label, 3000)
                 #self.label = self.label_origin
                 #print(self.label)
 
@@ -156,15 +162,9 @@ class PARCLIP(CrossEntropySystem):
     #    return self.encoder(img)
 
     def txtencode(self, text: torch.Tensor):
+        with torch.no_grad():
+            emb = self.CLIPmodel.encode_text(text.to(self._device))
 
-        if self.text_pmt:  
-            #emb = self.pmt_text_encoder(self.pmt_learner, self.tokenized_prompts)
-
-            with torch.no_grad():
-                emb = self.CLIPmodel.encode_text(text.to(self._device))
-        else:
-            with torch.no_grad():
-                emb = self.CLIPmodel.encode_text(text.to(self._device))
         return emb
     
     def decode(self, tgt: torch.Tensor, x: torch.Tensor, memory: torch.Tensor, tgt_mask: Optional[Tensor] = None,
@@ -178,122 +178,106 @@ class PARCLIP(CrossEntropySystem):
                 if self.new:
                     self.text_features = self.text_features.to(self._device)
                     self.text_features = self.text_features.to(torch.float32)
-                    self.text_features /= self.text_features.norm(dim=-1, keepdim=True).to(self._device)
                     self.new = False
 
             elif self.seperate:
                 if self.new:
-                    #self.text_features = torch.cat([self.txtencode(c) for c in self.text_token]).to(self._device)
-                    
-                    # 빈 리스트를 생성하여 텍스트 토큰의 특성 벡터를 저장할 준비를 합니다.
                     text_features_list = []
-
-                    # self.text_token의 각 텍스트 토큰에 대해 반복합니다.
                     for c in self.text_token:
-                    # 각 텍스트 토큰에 대한 특성 벡터를 계산하고 저장합니다.
                         text_feature = self.txtencode(c)
                         text_features_list.append(text_feature)
-
-                    # 모든 특성 벡터를 torch.cat을 사용하여 연결합니다.
                     self.text_features = torch.cat(text_features_list, dim=0).to(self._device)
                     
                     #torch.save(self.text_features, 'real_seperate.pth')
-                    self.text_features /= self.text_features.norm(dim=-1, keepdim=True).to(self._device)
+                    
                     self.new = False
             elif self.text_pmt:
                 if self.new:
                     #self.text_features_word = torch.cat([self.txtencode(c) for c in self.text_token]).to(self._device)
+                    if self.load:
+                        print("load unormal_seperate")
+                    else:
+                        text_features_list = []
+                        for tokenized_text in self.text_token:
+                            text_feature = self.txtencode(tokenized_text)
+                            text_features_list.append(text_feature)
+
+                        self.text_features_tensor = torch.cat(text_features_list, dim=0).to(self._device)
+                        torch.save(self.text_features_tensor, 'unnormal_seperate_2.pth')
+
+                    #self.text_features_tensor= features = torch.load('unnormal_seperate.pth').to(self._device)
                     
-                                        # 빈 리스트를 생성하여 텍스트 토큰의 특성 벡터를 저장할 준비를 합니다.
-                    text_features_list = []
-
-                    # self.text_token의 각 텍스트 토큰에 대해 반복합니다.
-                    for c in self.text_token:
-                    # 각 텍스트 토큰에 대한 특성 벡터를 계산하고 저장합니다.
-                        text_feature = self.txtencode(c)
-                        self.c = c
-                        text_features_list.append(text_feature)
-
-                    # 모든 특성 벡터를 torch.cat을 사용하여 연결합니다.
-                    self.text_features_word = torch.cat(text_features_list, dim=0).to(self._device)
-                    del self.text_token
-                    del text_features_list
-                    #torch.save(self.text_features, 'real_seperate.pth')
-                    
-
                     #self.pmt_text_encoder = TextEncoder(self.CLIPmodel).to(self._device)
                     #self.pmt_learner = PromptLearner(self.label,self.CLIPmodel.to(self._device),  device=self._device).to(self._device)
                     #self.tokenized_prompts = self.pmt_learner.tokenized_prompts.to(self._device)
                     self.new = False
 
-                    #print(self.text_features_word.shape, txt_pt.shape)
-                #self.text_features = self.txtencode()
-
 
                 txt_pt = self.text_prompt
-                txt_pt = txt_pt.expand(self.text_features_word.shape[0],-1,-1)
-                #print(txt_pt.shape,self.text_features_word.shape) #torch.Size([386531, 10, 768]) torch.Size([386531, 512])
-                #self.text_features =torch.cat((txt_pt,self.text_features_word),dim = 1)
-                
-                left_part = self.text_features_word[:,:0,:]
-                right_part = self.text_features_word[:,1:74,:]
-                self.text_features = torch.cat((left_part, txt_pt, right_part), dim=1)
-                #print(self.text_features.shape, self.text_features_word.shape) #torch.Size([6, 77, 512]) torch.Size([6, 77, 512])
+                txt_pt = txt_pt.expand(self.text_features_tensor.shape[0],-1,-1)
+                self.text_features_tensor = self.text_features_tensor.to(self._device)
+                #sos token 다음에 promt를 추가 sos+prompt+text
+                left_part = self.text_features_tensor[:,:0,:]
+                right_part = self.text_features_tensor[:,1:74,:]
+                text_features = torch.cat((left_part, txt_pt, right_part), dim=1)
 
-                del self.text_features_word
                 t = []
-                i=0
-                for y in self.text_features:
-                    #temp = y[torch.arange(y.shape[0]), self.text_token[i].argmax(dim=-1)] @ self.text_projection
-                    #print(y.shape) #torch.Size([77, 512])
+                c = self.text_token[0]
+                for y in text_features:
                     y = y.unsqueeze(0)
-                    a = torch.arange(y.shape[0])
-                    b = self.c.argmax(dim=-1)
-                    c =  y[a,b]
-
-                    temp = c @ self.text_projection
+                    temp = y[torch.arange(y.shape[0]), c.argmax(dim=-1)] @ self.text_projection
                     temp =temp.squeeze()
                     t.append(temp)
-                    i+=1
+
+
+                self.text_feature_unnormal = text_features
                 self.text_features = torch.stack(t).to(self._device)
-                self.text_features /= self.text_features.norm(dim=-1, keepdim=True).to(self._device)
             else:
                 if self.new:
                     self.text_features = self.txtencode(self.text_token)
                     self.tm = self.text_features[:][1]
                     self.text_features = self.text_features[:][0]
-                    
-                    self.text_features /= self.text_features.norm(dim=-1, keepdim=True).to(self._device)
+    
                     self.new = False
 
         tgt_list = []
         for image_features in x:
             with torch.no_grad():
+                self.text_features /= self.text_features.norm(dim=-1, keepdim=True).to(self._device)
                 image_features /= image_features.norm(dim=-1, keepdim=True)
                 similarity = (100.0 * image_features @ self.text_features.T).softmax(dim=-1)
             values, indices = similarity.topk(1)
-            tgt = self.label[indices]
-            #tgt = self.tokenizer.encode(tgt, self._device)
 
-            #Leehakho
-            if self.padding:
-                tgt = ""
-
+            tgt = self.text_feature_unnormal[indices]
             tgt_list.append(tgt)
 
-        tgt = self.tokenizer.encode(tgt_list, self._device)
-        tgt = tgt[:, :-1]
-        #tgt = torch.stack(tgt_list)
+        tgt_emb = torch.stack(tgt_list).to(self._device)
 
-        #B, N, L = tgt.shape
-        N, L = tgt.shape
+        #     tgt = self.label[indices]
+        #     #tgt = self.tokenizer.encode(tgt, self._device)
 
-        # <bos> stands for the null context. We only supply position information for characters after <bos>.
-        null_ctx = self.text_embed(tgt[:, :1])
+        #     #Leehakho
+        #     if self.padding:
+        #         tgt = ""
 
-        tgt_emb = self.pos_queries[:, :L - 1] + self.text_embed(tgt[:, 1:])
+        #     tgt_list.append(tgt)
 
-        tgt_emb = self.dropout(torch.cat([null_ctx, tgt_emb], dim=1))
+        # tgt = self.tokenizer.encode(tgt_list, self._device)
+        # tgt = tgt[:, :-1]
+        # #tgt = torch.stack(tgt_list)
+
+        B, N, L = tgt.shape
+        #print(tgt_emb.shape)
+        #N, L = tgt_emb.shape
+
+        # # <bos> stands for the null context. We only supply position information for characters after <bos>.
+        # null_ctx = self.text_embed(tgt[:, :1])
+
+        # tgt_emb = self.pos_queries[:, :L - 1] + self.text_embed(tgt[:, 1:])
+        #tgt_emb = self.dropout(torch.cat([null_ctx, tgt_emb], dim=1))
+        tgt_emb = self.dropout(tgt_emb)
+
+
         if tgt_query is None:
             tgt_query = self.pos_queries[:, :L].expand(N, -1, -1)
         tgt_query = self.dropout(tgt_query)
@@ -317,10 +301,8 @@ class PARCLIP(CrossEntropySystem):
         # No prior context, so input is just <bos>. We query all positions.
         tgt_in = torch.full((bs, 1), self.bos_id, dtype=torch.long, device=self._device)
         tgt_out = self.decode(tgt_in, x, memory,tgt_query=pos_queries)
-        #print(tgt_out.shape) #torch.Size([64, 26, 384])
         logits = self.head(tgt_out)
-        #print(logits.shape, "!!!!") #1, 6, 37 same
-        #loss = F.cross_entropy(logits, logits, ignore_index=self.pad_id)
+  
         return logits
 
     def write_unique_strings_to_file(self, strings):
@@ -353,39 +335,8 @@ class PARCLIP(CrossEntropySystem):
         n = (gt != self.pad_id).sum().item()
         max_len = tgt.shape[1] -2 # exclude <eos> from count
 
-        #out = self.forward(images, max_len)
-        #forward 부분
-        max_length = max_len
-        max_length = self.max_label_length if max_length is None else min(max_length, self.max_label_length)
-        bs = images.shape[0]
-        # +1 for <eos> at end of sequence.
-        num_steps = max_length + 1
-        x, memory = self.clip_encode(images)
-        #memory = self.encode(images)
+        out = self.forward(images, max_len)
 
-        # Query positions up to `num_steps`
-        pos_queries = self.pos_queries[:, :num_steps].expand(bs, -1, -1)
-
-        # Special case for the forward permutation. Faster than using `generate_attn_masks()`
-        #tgt_mask = query_mask = torch.triu(torch.full((num_steps, num_steps), float('-inf'), device=self._device), 1)
-
-        # No prior context, so input is just <bos>. We query all positions.
-        tgt_in = torch.full((bs, 1), self.bos_id, dtype=torch.long, device=self._device)
-        if self.use_gt:
-            tgt_out = self.decode(tgt_in, x, memory, tgt_query=pos_queries, GT=labels)
-        else:
-            tgt_out = self.decode(tgt_in, x, memory, tgt_query=pos_queries)
-        #print(tgt_out.shape) #torch.Size([64, 26, 384])
-        logits = self.head(tgt_out)
-        #print(logits.shape, "!!!!") #1, 6, 37 same
-        #loss = F.cross_entropy(logits, logits, ignore_index=self.pad_id)
-        out = logits
-
-
-
-
-
-        #print(out.shape, gt.shape)
         logits = out.flatten(end_dim=1)
         #print(logits.shape, gt.flatten().shape) #torch.Size([1664(고정), 37]) torch.Size([1024])
         loss = loss + (n * F.cross_entropy(logits, gt.flatten(), ignore_index=self.pad_id))
