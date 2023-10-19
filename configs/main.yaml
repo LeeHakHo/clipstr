@@ -13,7 +13,7 @@ model:
 
   # For charset_test, ordering doesn't matter.
   charset_test: "0123456789abcdefghijklmnopqrstuvwxyz"
-  batch_size: 128
+  batch_size: 192
   weight_decay: 0.0
   warmup_pct: 0.075  # equivalent to 1.5 epochs of warm up
 
@@ -29,7 +29,7 @@ data:
   remove_whitespace: true
   normalize_unicode: true
   augment: true
-  num_workers: 8
+  num_workers: 16
 
 trainer:
   _target_: pytorch_lightning.Trainer
