@@ -62,7 +62,7 @@ class PARCLIP(CrossEntropySystem):
         nn.init.trunc_normal_(self.pos_queries, std=.02)
 
         self.CLIPmodel, _ = clip.load('ViT-B/16')
-
+        self.text_projection = self.CLIPmodel.text_projection
         # 모델 파라미터 고정하기
         for param in self.CLIPmodel.parameters():
             #param.requires_grad = False
@@ -104,7 +104,7 @@ class PARCLIP(CrossEntropySystem):
                 rest = torch.load('unnormal_seperate_2.pth').to(self._device)
                 print(self.text_features_tensor.shape, rest.shape)
                 self.text_features_tensor = torch.cat((self.text_features_tensor, rest), dim=0)
-            self.label = self.label[300000:]
+            self.label = self.label[:30]
             print(len(self.label))
             self.text_token =[]
             for l in self.label:
@@ -186,24 +186,28 @@ class PARCLIP(CrossEntropySystem):
                             del text_feature
 
                         self.text_features_tensor = torch.cat(text_features_list, dim=0).to(self._device)
-                        torch.save(self.text_features_tensor, 'unnormal_seperate_4.pth')
-
-                    self.text_prompt = self.text_prompt.expand(self.text_features_tensor.shape[0],-1,-1)
+                        #torch.save(self.text_features_tensor, 'unnormal_seperate_4.pth')
                     self.new = False
 
                 self.text_features_tensor = self.text_features_tensor.to(self._device)
 
+                prompt = self.text_prompt
+                prompt = prompt.expand(self.text_features_tensor.shape[0],-1,-1)
                 #sos token 다음에 promt를 추가 sos+prompt+text
-                text_features = torch.cat((self.text_features_tensor[:,:0,:], self.text_prompt, self.text_features_tensor[:,1:74,:]), dim=1)
-
+                text_features = torch.cat((self.text_features_tensor[:,:0,:], prompt, self.text_features_tensor[:,1:74,:]), dim=1)
+                
                 t = []
                 for y in text_features:
+                    #temp = y[torch.arange(y.shape[0]), self.text_token[i].argmax(dim=-1)] @ self.text_projection
+                    #print(y.shape) #torch.Size([77, 512])
                     y = y.unsqueeze(0)
-                    temp = y[torch.arange(y.shape[0]), self.text_token[0].argmax(dim=-1)] 
-                    with torch.no_grad():
-                        temp = temp @ self.CLIPmodel.text_projection
-                    temp =temp.squeeze()
+                    a = torch.arange(y.shape[0])
+                    b = self.text_token[0].argmax(dim=-1)
+                    c =  y[a,b]
+                    temp = c @ self.text_projection
+                    #temp =temp.squeeze()
                     t.append(temp)
+                
 
 
                 self.text_feature_unnormal = text_features
@@ -217,7 +221,6 @@ class PARCLIP(CrossEntropySystem):
                     self.new = False
 
         tgt_list = []
-        print(self.text_features.shape)
         self.candidate_label = []
         for image_features in x:
             with torch.no_grad():
