@@ -1,18 +1,3 @@
-# Scene Text Recognition Model Hub
-# Copyright 2022 Darwin Bautista
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     https://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import math
 from functools import partial
 from itertools import permutations
@@ -33,7 +18,6 @@ from .modules import DecoderLayer, Decoder, Encoder, TokenEmbedding
 
 from .CLIP import clip,model,simple_tokenizer
 from .simclr import SimCLR
-#from .coop import TextEncoder, PromptLearner
 import torch
 
 import matplotlib.pyplot as plt
@@ -78,7 +62,6 @@ class PARCLIP(CrossEntropySystem):
         nn.init.trunc_normal_(self.pos_queries, std=.02)
 
         self.CLIPmodel, _ = clip.load('ViT-B/16')
-        #self.simclr = SimCLR(self._device)
 
         # 모델 파라미터 고정하기
         for param in self.CLIPmodel.parameters():
@@ -92,7 +75,7 @@ class PARCLIP(CrossEntropySystem):
         #                        mlp_ratio=enc_mlp_ratio)
 
         dic = simple_tokenizer.SimpleTokenizer(max_label_length= self.max_label_length, charset = self.charset_train)
-        label_origin = dic.getLabelVocab() #label 가져오기
+        self.label = dic.getLabelVocab() #label 가져오기
         
 
         self.new = True #첫번째 batch에서 encode를 한번만 하기 위한변수
@@ -100,13 +83,12 @@ class PARCLIP(CrossEntropySystem):
         self.padding = False #inference에 padding값을 넣을지
         self.load_features = False #저장된 text encode를 가져올지
         self.seperate = False #encode할때 text를 나눠서 하기
-        self.text_pmt = True #text_rpompt 사용 여부
-        self.load = True #text prompt를 위한 unnormalized feature를 load할지 여부
-        self.label = label_origin
+        self.text_pmt = True #text_prompt 사용 여부
+        self.load = False #text prompt를 위한 unnormalized feature를 load할지 여부
+        self.contrastive = False
 
-        if  self.text_pmt2 or self.text_pmt:
-            self.text_prompt = nn.Parameter(torch.randn([1, 4, 512]))
-
+        if self.contrastive:
+            self.simclr = SimCLR(self._device)
         if self.load_features:
             # 파일에서 텐서를 불러오기
             self.text_features = torch.load('real_seperate.pth').to(self._device)
@@ -116,12 +98,13 @@ class PARCLIP(CrossEntropySystem):
             #    features = torch.cat((features, temp), axis=0)
             #self.tm = self.text_features
         elif self.text_pmt:
+            self.text_prompt = nn.Parameter(torch.randn([1, 4, 512]))
             if self.load:
                 self.text_features_tensor = torch.load('unnormal_seperate.pth').to(self._device)
                 rest = torch.load('unnormal_seperate_2.pth').to(self._device)
+                print(self.text_features_tensor.shape, rest.shape)
                 self.text_features_tensor = torch.cat((self.text_features_tensor, rest), dim=0)
-            self.text_projection = self.CLIPmodel.text_projection
-            self.label = label_origin
+            self.label = self.label[300000:]
             print(len(self.label))
             self.text_token =[]
             for l in self.label:
@@ -142,7 +125,7 @@ class PARCLIP(CrossEntropySystem):
                 #print(self.label)
 
                 if self.padding:
-                    self.label = self.label_origin[:1]
+                    self.label = self.label[:1]
                 
                 self.text_token = torch.cat([clip.tokenize(f"word {c}") for c in self.label])
     #@torch.jit.ignore
@@ -164,7 +147,6 @@ class PARCLIP(CrossEntropySystem):
     def txtencode(self, text: torch.Tensor):
         with torch.no_grad():
             emb = self.CLIPmodel.encode_text(text.to(self._device))
-
         return emb
     
     def decode(self, tgt: torch.Tensor, x: torch.Tensor, memory: torch.Tensor, tgt_mask: Optional[Tensor] = None,
@@ -201,37 +183,31 @@ class PARCLIP(CrossEntropySystem):
                         for tokenized_text in self.text_token:
                             text_feature = self.txtencode(tokenized_text)
                             text_features_list.append(text_feature)
+                            del text_feature
 
                         self.text_features_tensor = torch.cat(text_features_list, dim=0).to(self._device)
-                        torch.save(self.text_features_tensor, 'unnormal_seperate_2.pth')
+                        torch.save(self.text_features_tensor, 'unnormal_seperate_4.pth')
 
-                    #self.text_features_tensor= features = torch.load('unnormal_seperate.pth').to(self._device)
-                    
-                    #self.pmt_text_encoder = TextEncoder(self.CLIPmodel).to(self._device)
-                    #self.pmt_learner = PromptLearner(self.label,self.CLIPmodel.to(self._device),  device=self._device).to(self._device)
-                    #self.tokenized_prompts = self.pmt_learner.tokenized_prompts.to(self._device)
+                    self.text_prompt = self.text_prompt.expand(self.text_features_tensor.shape[0],-1,-1)
                     self.new = False
 
-
-                txt_pt = self.text_prompt
-                txt_pt = txt_pt.expand(self.text_features_tensor.shape[0],-1,-1)
                 self.text_features_tensor = self.text_features_tensor.to(self._device)
+
                 #sos token 다음에 promt를 추가 sos+prompt+text
-                left_part = self.text_features_tensor[:,:0,:]
-                right_part = self.text_features_tensor[:,1:74,:]
-                text_features = torch.cat((left_part, txt_pt, right_part), dim=1)
+                text_features = torch.cat((self.text_features_tensor[:,:0,:], self.text_prompt, self.text_features_tensor[:,1:74,:]), dim=1)
 
                 t = []
-                c = self.text_token[0]
                 for y in text_features:
                     y = y.unsqueeze(0)
-                    temp = y[torch.arange(y.shape[0]), c.argmax(dim=-1)] @ self.text_projection
+                    temp = y[torch.arange(y.shape[0]), self.text_token[0].argmax(dim=-1)] 
+                    with torch.no_grad():
+                        temp = temp @ self.CLIPmodel.text_projection
                     temp =temp.squeeze()
                     t.append(temp)
 
 
                 self.text_feature_unnormal = text_features
-                self.text_features = torch.stack(t).to(self._device)
+                self.text_features = torch.cat(t).to(self._device)
             else:
                 if self.new:
                     self.text_features = self.txtencode(self.text_token)
@@ -241,13 +217,22 @@ class PARCLIP(CrossEntropySystem):
                     self.new = False
 
         tgt_list = []
+        print(self.text_features.shape)
+        self.candidate_label = []
         for image_features in x:
             with torch.no_grad():
                 self.text_features /= self.text_features.norm(dim=-1, keepdim=True).to(self._device)
                 image_features /= image_features.norm(dim=-1, keepdim=True)
                 similarity = (100.0 * image_features @ self.text_features.T).softmax(dim=-1)
-            values, indices = similarity.topk(1)
-
+            
+            if self.contrastive:
+                candidate_label = []
+                _, candidate_idx = torch.topk(similarity, 4)
+                self.candidate = self.text_features[candidate_idx]
+                for i in candidate_idx:
+                    candidate_label.append(self.text_token[i])
+                self.candidate_label.append(candidate_label)
+            _, indices = similarity.topk(1)
             tgt = self.text_feature_unnormal[indices]
             tgt_list.append(tgt)
 
@@ -348,19 +333,28 @@ class PARCLIP(CrossEntropySystem):
         #loss = F.cross_entropy(logits, gt.flatten(), ignore_index=self.pad_id)
 
 
-                
-        # from torch.cuda.amp import GradScaler, autocast
-        # torch.autograd.set_detect_anomaly(True)
-        # x, con_labels = self.simclr.info_nce_loss(x)
-        # con_labels = con_labels.to(self._device)
-        # #con_loss = self.criterion(x, con_labels)
-        # #scaler = GradScaler(enabled=True)
-        # #con_loss = scaler.scale(con_loss)
-        # loss += 0.1* n * F.cross_entropy(x, con_labels, ignore_index=self.pad_id)
+        if self.contrastive:    
+            from torch.cuda.amp import GradScaler, autocast
+            torch.autograd.set_detect_anomaly(True)
+
+
+            for i in labels[0]:
+                if self.candidate_label[i]:
+                    print("self.cand")
+
+            x, con_labels = self.simclr.info_nce_loss(x, self.candidate)
+            con_labels = con_labels.to(self._device)
+            con_loss = self.criterion(x, con_labels)
+            #scaler = GradScaler(enabled=True)
+            #con_loss = scaler.scale(con_loss)
+            #loss += 0.1* n * F.cross_entropy(x, con_labels, ignore_index=self.pad_id)
 
 
         loss /= loss_numel
-        total_loss = loss #+ con_loss
+        if self.contrastive:
+            total_loss = 0.9 * loss + 0.1 * con_loss
+        else:
+            total_loss = loss
 
         self.log('loss', total_loss)
         #print(loss) #tensor(4.1242, device='cuda:6', grad_fn=<DivBackward0>)

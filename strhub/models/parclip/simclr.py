@@ -19,7 +19,7 @@ class SimCLR(object):
         self.device = device
         self.temperature = 0.07
 
-    def info_nce_loss(self, features):
+    def info_nce_loss(self, features, candidate):
         
         labels = torch.cat([torch.arange(self.batch_size) for i in range(self.n_views)], dim=0)
         labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float()
