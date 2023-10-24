@@ -349,12 +349,12 @@ class CLIP(nn.Module):
         text = text.to(device)
         self.token_embedding =  self.token_embedding.to(device)
         x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
-        x = x + self.positional_embedding.type(self.dtype).to(device)
+        x = x + self.positional_embedding.type(self.dtype)
         x = x.permute(1, 0, 2)  # NLD -> LND
-        self.transformer = self.transformer.to(device)
+        #self.transformer = self.transformer.to(device)
         x = self.transformer(x)
         x = x.permute(1, 0, 2)  # LND -> NLD
-        self.ln_final = self.ln_final.to(device)
+        #self.ln_final = self.ln_final.to(device)
         x = self.ln_final(x).type(self.dtype)
         #nld = x
         # x.shape = [batch_size, n_ctx, transformer.width]

@@ -22,6 +22,7 @@ import torch
 
 import matplotlib.pyplot as plt
 import random
+import sys
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 class PARCLIP(CrossEntropySystem):
@@ -77,15 +78,13 @@ class PARCLIP(CrossEntropySystem):
         dic = simple_tokenizer.SimpleTokenizer(max_label_length= self.max_label_length, charset = self.charset_train)
         self.label = dic.getLabelVocab() #label 가져오기
         
-
-        self.new = True #첫번째 batch에서 encode를 한번만 하기 위한변수
         #Leehakho
         self.padding = False #inference에 padding값을 넣을지
         self.load_features = False #저장된 text encode를 가져올지
         self.seperate = False #encode할때 text를 나눠서 하기
         self.text_pmt = True #text_prompt 사용 여부
-        self.load = False #text prompt를 위한 unnormalized feature를 load할지 여부
-        self.save = True
+        self.load = True #text prompt를 위한 unnormalized feature를 load할지 여부
+        self.save = False
         self.contrastive = False
 
         if self.contrastive:
@@ -99,22 +98,14 @@ class PARCLIP(CrossEntropySystem):
             #    features = torch.cat((features, temp), axis=0)
             #self.tm = self.text_features
 
-            self.text_features_tensor = torch.cat([self.txtencode(tokenized_text) for tokenized_text in text_token]).to(device)
+            self.text_features = torch.cat([self.txtencode(tokenized_text) for tokenized_text in text_token]).to(device)
+            self.text_features = self.text_features.to(self._device)
+            self.text_features = self.text_features.to(torch.float32)
         elif self.text_pmt:
             self.text_prompt = nn.Parameter(torch.randn([1, 4, 512]))
-            if self.load:
-                t1 = torch.load('unnormal_seperate1.pth').to(self._device)
-                t2 = torch.load('unnormal_seperate2.pth').to(self._device)
-                print(t2.shape)
-                t1 = torch.cat((t1, t2), dim=0)
-                t2 = torch.load('unnormal_seperate3.pth').to(self._device)
-                t1 = torch.cat((t1, t2), dim=0)
-                t2 = torch.load('unnormal_seperate4.pth').to(self._device)
-                t1 = torch.cat((t1, t2), dim=0)
-                self.text_features_tensor = t1
-                del t1
-                del t2
-            self.label = self.label[:200000]
+        
+            self.label = self.label#[200000:]
+            self.i=0
             print(len(self.label))
             text_token =[]
             for l in self.label:
@@ -122,11 +113,24 @@ class PARCLIP(CrossEntropySystem):
                 a.append(l)
                 text_token.append(torch.cat([clip.tokenize(f"{c}").to(self._device) for c in a]))
             self.text_token = text_token
+            #self.text_features_tensor = torch.cat([self.txtencode(tokenized_text) for tokenized_text in text_token])
+            if self.load:
+                self.text_features_tensor = torch.load('unnormal_seperate.pth').to(device)
+                print("load unnoralized features", self.text_features_tensor.shape)
+            else:
+                text_features_list = []
+                text_token = self.text_token
+                for tokenized_text in text_token:
+                    text_feature = self.txtencode(tokenized_text, self._device)
+                    text_features_list.append(text_feature)
 
-            self.text_features_tensor = torch.cat([self.txtencode(tokenized_text) for tokenized_text in text_token]).to(device)
-            if self.save:
-                torch.save(self.text_features_tensor, 'unnormal_seperate_1.pth')
-                print("saved tensor ", self.text_features_tensor.shape)
+                self.text_features_tensor = torch.cat(text_features_list, dim= 0)
+                del text_features_list
+                del text_token
+                
+                if self.save:
+                    torch.save(self.text_features_tensor, 'unnormal_seperate.pth')
+                    print("saved tensor ", self.text_features_tensor.shape)
         else:
             if self.seperate:
                 print(len(self.label))
@@ -146,6 +150,7 @@ class PARCLIP(CrossEntropySystem):
                     self.label = self.label[:1]
                 
                 self.text_token = torch.cat([clip.tokenize(f"word {c}") for c in self.label])
+        print("finish init")
     #@torch.jit.ignore
     #def no_weight_decay(self):
     #    param_names = {'text_embed.embedding.weight', 'pos_queries'}
@@ -162,10 +167,14 @@ class PARCLIP(CrossEntropySystem):
     #def encode(self, img: torch.Tensor):
     #    return self.encoder(img)
 
-    def txtencode(self, text: torch.Tensor):
+    def txtencode(self, text: torch.Tensor, device):
         with torch.no_grad():
-            self.CLIPmodel.encode_text = self.CLIPmodel.encode_text.to(self._device)
-            emb = self.CLIPmodel.encode_text(text,self._device)
+            text = text.to(device)
+            self.CLIPmodel = self.CLIPmodel.to(device)
+            emb = self.CLIPmodel.encode_text(text, device)
+        self.i  += 1
+        sys.stdout.write(" words encoded" + "\r" + str(self.i))
+        sys.stdout.flush()
         return emb
     
 
@@ -178,82 +187,35 @@ class PARCLIP(CrossEntropySystem):
     def decode(self, tgt: torch.Tensor, x: torch.Tensor, memory: torch.Tensor, tgt_mask: Optional[Tensor] = None,
                tgt_padding_mask: Optional[Tensor] = None, tgt_query: Optional[Tensor] = None,
                tgt_query_mask: Optional[Tensor] = None, GT: Optional[Tensor] = None):
-
+        print("start decode")
         if GT is not None:
             tgt_list = GT
-        else:
-            if self.load_features:
-                if self.new:
-                    self.text_features = self.text_features.to(self._device)
-                    self.text_features = self.text_features.to(torch.float32)
-                    self.new = False
+        elif self.text_pmt:
+            self.text_features_tensor = self.text_features_tensor.to(self._device)
 
-            elif self.seperate:
-                if self.new:
-                    text_features_list = []
-                    for c in self.text_token:
-                        text_feature = self.txtencode(c)
-                        text_features_list.append(text_feature)
-                    self.text_features = torch.cat(text_features_list, dim=0).to(self._device)
-                    
-                    #torch.save(self.text_features, 'real_seperate.pth')
-                    
-                    self.new = False
-            elif self.text_pmt:
-                if self.new:
-                    #self.text_features_word = torch.cat([self.txtencode(c) for c in self.text_token]).to(self._device)
-                    if self.load:
-                        print("load unormal_seperate")
-                    else:
-                        # text_features_list = []
-                        # text_token = self.text_token
-                        # for tokenized_text in text_token:
-                        #     text_feature = self.txtencode(tokenized_text)
-                        #     text_features_list.append(text_feature)
-
-                        # self.text_features_tensor = torch.cat(text_features_list, dim=0).to(self._device)
-                        # del text_features_list
-                        # del text_token
-
-                        # self.text_features_tensor = torch.cat([self.txtencode(tokenized_text) for tokenized_text in text_token]).to(device)
-
-                        # if self.save:
-                        #     torch.save(self.text_features_tensor, 'unnormal_seperate_1.pth')
-                        #     print("saved tensor ", self.text_features_tensor.shape)
-                        print("!")
-                    self.new = False
-                    self.text_features_tensor = self.text_features_tensor.to(self._device)
-
-                text_f = self.text_features_tensor
-                prompt = self.text_prompt
-                prompt = prompt.expand(text_f.shape[0],-1,-1)
-                #sos token 다음에 promt를 추가 sos+prompt+text
-                text_features = torch.cat((text_f[:,:0,:], prompt, text_f[:,1:74,:]), dim=1)
+            text_f = self.text_features_tensor
+            prompt = self.text_prompt
+            prompt = prompt.expand(text_f.shape[0],-1,-1)
+            #sos token 다음에 promt를 추가 sos+prompt+text
+            text_features = torch.cat((text_f[:,:0,:], prompt, text_f[:,1:74,:]), dim=1)
                 
-                t = []
-                for y in text_features:
-                    #temp = y[torch.arange(y.shape[0]), self.text_token[i].argmax(dim=-1)] @ self.text_projection
-                    #print(y.shape) #torch.Size([77, 512])
-                    y = y.unsqueeze(0)
-                    a = torch.arange(y.shape[0])
-                    b = self.text_token[0].argmax(dim=-1)
-                    c =  y[a,b]
-                    with torch.no_grad():
-                        temp = c @ self.text_projection
-                    #temp =temp.squeeze()
-                    t.append(temp)
+            t = []
+            for y in text_features:
+                #temp = y[torch.arange(y.shape[0]), self.text_token[i].argmax(dim=-1)] @ self.text_projection
+                #print(y.shape) #torch.Size([77, 512])
+                y = y.unsqueeze(0)
+                a = torch.arange(y.shape[0])
+                b = self.text_token[0].argmax(dim=-1)
+                c =  y[a,b]
+                with torch.no_grad():
+                    temp = c @ self.text_projection
+                #temp =temp.squeeze()
+                t.append(temp)
 
 
                 self.text_feature_unnormal = text_features
                 self.text_features = torch.cat(t).to(self._device)
                 del t
-            else:
-                if self.new:
-                    self.text_features = self.txtencode(self.text_token)
-                    self.tm = self.text_features[:][1]
-                    self.text_features = self.text_features[:][0]
-    
-                    self.new = False
 
         tgt_list = []
         self.candidate_label = []
@@ -307,7 +269,7 @@ class PARCLIP(CrossEntropySystem):
         return self.decoder(tgt_query, tgt_emb, memory, tgt_query_mask, tgt_mask, tgt_padding_mask)
 
     def forward(self, images: Tensor, max_length: Optional[int] = None) -> Tensor:
-        #print(images.shape, max_length)
+        print("start forward")
         max_length = self.max_label_length if max_length is None else min(max_length, self.max_label_length)
         bs = images.shape[0]
         # +1 for <eos> at end of sequence.
