@@ -104,9 +104,9 @@ class PARCLIP(CrossEntropySystem):
     #def encode(self, img: torch.Tensor):
     #    return self.encoder(img)
 
-    def txtencode(self, text: torch.Tensor):
+    def txtencode(self, text: torch.Tensor, normalize):
         with torch.no_grad():
-            emb = self.CLIPmodel.encode_text(text)
+            emb = self.CLIPmodel.encode_text(text, normalize)
         return emb
     
 
@@ -120,6 +120,7 @@ class PARCLIP(CrossEntropySystem):
                tgt_padding_mask: Optional[Tensor] = None, tgt_query: Optional[Tensor] = None,
                tgt_query_mask: Optional[Tensor] = None, GT: Optional[Tensor] = None):
         if self.new:
+            self.CLIPmodel =self.CLIPmodel.to(self._device)
             if self.contrastive:
                 self.simclr = SimCLR(self._device)
             if self.load_features:
@@ -138,13 +139,13 @@ class PARCLIP(CrossEntropySystem):
                 self.text_prompt = nn.Parameter(torch.randn([1, 4, 512]))
             
                 self.label = self.label#[200000:]
-                self.i=0
+                i=0
                 print(len(self.label))
                 text_token =[]
                 for l in self.label:
                     a = []
                     a.append(l)
-                    text_token.append(torch.cat([clip.tokenize(f"{c}") for c in a]))
+                    text_token.append(torch.cat([clip.tokenize(f"{c}") for c in a]).to(self._device))
                 self.text_token = text_token
                 #self.text_features_tensor = torch.cat([self.txtencode(tokenized_text) for tokenized_text in text_token])
                 if self.load:
@@ -153,8 +154,8 @@ class PARCLIP(CrossEntropySystem):
                 else:
                     text_features_list = []
                     for tokenized_text in text_token:
-                        text_feature, _ = self.txtencode(tokenized_text)
-                        self.i += 1
+                        text_feature= self.txtencode(tokenized_text, normalize = True)
+                        i += 1
                         sys.stdout.write(" words encoded" + "\r" + str(self.i))
                         sys.stdout.flush()
                         text_features_list.append(text_feature)
@@ -214,9 +215,10 @@ class PARCLIP(CrossEntropySystem):
 
         clip_pred = torch.cat(clip_pred, dim=0).to(self._device)
         text_features_list = []
+        
         for tokenized_text in clip_pred:
             tokenized_text = tokenized_text.unsqueeze(0)
-            _ , text_feature = self.txtencode(tokenized_text)
+            text_feature = self.txtencode(tokenized_text, normalize = False)
             text_features_list.append(text_feature)
 
         tgt = torch.cat(text_features_list, dim= 0)
