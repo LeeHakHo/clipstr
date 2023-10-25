@@ -20,7 +20,6 @@ class SimCLR(object):
         self.temperature = 0.07
 
     def info_nce_loss(self, features, candidate):
-        
         labels = torch.cat([torch.arange(self.batch_size) for i in range(self.n_views)], dim=0)
         labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float()
         labels = labels.to(self.device)
@@ -54,4 +53,23 @@ class SimCLR(object):
         labels = torch.zeros(logits.shape[0], dtype=torch.long).to(self.device)
 
         logits = logits / self.temperature
+        return logits, labels
+    
+    def my_loss(self, features, candidate):
+        batch = []
+        #print(features.shape, candidate.shape)
+        #similarity_matrix = torch.matmul(img, txt.T)
+        img = features
+        txt = candidate
+        with torch.no_grad():
+            txt /= txt.norm(dim=-1, keepdim=True)
+            img /= img.norm(dim=-1, keepdim=True)
+        #print(torch.isnan(txt), torch.isnan(img))
+        #print(torch.isinf(txt), torch.isinf(img))
+        #print(img.shape, txt.shape)
+        similarity_matrix = torch.matmul(txt, img.T)
+        #print(similarity_matrix)
+        batch.append(similarity_matrix)
+        logits = torch.cat(batch, dim = 0)
+        labels = torch.zeros(logits.shape[0], dtype=torch.long).to(self.device)
         return logits, labels

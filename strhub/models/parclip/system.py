@@ -86,9 +86,8 @@ class PARCLIP(CrossEntropySystem):
         self.text_pmt = True #text_prompt 사용 여부
         self.load = True #text prompt를 위한 unnormalized feature를 load할지 여부
         self.save = False
-        self.contrastive = False
+        self.contrastive = True
 
-    #@torch.jit.ignore
     #def no_weight_decay(self):
     #    param_names = {'text_embed.embedding.weight', 'pos_queries'}
     #    enc_param_names = {'encoder.' + n for n in self.encoder.no_weight_decay()}
@@ -123,6 +122,7 @@ class PARCLIP(CrossEntropySystem):
             self.CLIPmodel =self.CLIPmodel.to(self._device)
             if self.contrastive:
                 self.simclr = SimCLR(self._device)
+                self.criterion = torch.nn.CrossEntropyLoss().to(self._device)
             if self.load_features:
                 # 파일에서 텐서를 불러오기
                 self.text_features = torch.load('real_seperate.pth').to(self._device)
@@ -193,26 +193,31 @@ class PARCLIP(CrossEntropySystem):
         if GT is not None:
             tgt_list = GT
         elif self.text_pmt:
+            self.text_features_tensor = self.text_features_tensor.to(torch.float32)
             self.text_features = self.text_features_tensor.to(self._device)
         
         clip_pred =[]
+        candidate_features = []
+        candidate_label = []
         for image_features in x:
             with torch.no_grad():
-                self.text_features /= self.text_features.norm(dim=-1, keepdim=True).to(self._device)
+                self.text_features /= self.text_features.norm(dim=-1, keepdim=True)
                 image_features /= image_features.norm(dim=-1, keepdim=True)
                 similarity = (100.0 * image_features @ self.text_features.T).softmax(dim=-1)
-            _, indices = similarity.topk(1)
-            clip_pred.append(self.text_token[indices])
-            
-            if self.contrastive:
-                self.candidate_label = []
-                candidate_label = []
-                _, candidate_idx = torch.topk(similarity, 4)
-                self.candidate = self.text_features[candidate_idx]
-                for i in candidate_idx:
-                    candidate_label.append(self.text_token[i])
-                self.candidate_label.append(candidate_label)
+            _, indices = similarity.topk(4)
+            indx = indices[0]
 
+            clip_pred.append(self.text_token[indx])
+
+            candidate = []
+            if self.contrastive:
+                candidate_l = []
+                for idx in indices:
+                    candidate.append(self.text_features_tensor[idx])
+                candidate_features.append(candidate)
+                for i in indices:
+                    candidate_l.append(self.label[i])
+                candidate_label.append(candidate_l)
         clip_pred = torch.cat(clip_pred, dim=0).to(self._device)
         text_features_list = []
         
@@ -257,7 +262,7 @@ class PARCLIP(CrossEntropySystem):
         if tgt_query is None:
             tgt_query = self.pos_queries[:, :L].expand(N, -1, -1)
         tgt_query = self.dropout(tgt_query)
-        return self.decoder(tgt_query, tgt_emb, memory, tgt_query_mask, tgt_mask, tgt_padding_mask)
+        return self.decoder(tgt_query, tgt_emb, memory, tgt_query_mask, tgt_mask, tgt_padding_mask), candidate_features, candidate_label
 
     def forward(self, images: Tensor, max_length: Optional[int] = None) -> Tensor:
         max_length = self.max_label_length if max_length is None else min(max_length, self.max_label_length)
@@ -275,7 +280,7 @@ class PARCLIP(CrossEntropySystem):
 
         # No prior context, so input is just <bos>. We query all positions.
         tgt_in = torch.full((bs, 1), self.bos_id, dtype=torch.long, device=self._device)
-        tgt_out = self.decode(tgt_in, x, memory,tgt_query=pos_queries)
+        tgt_out, _, _ = self.decode(tgt_in, x, memory,tgt_query=pos_queries)
         logits = self.head(tgt_out)
   
         return logits
@@ -310,7 +315,28 @@ class PARCLIP(CrossEntropySystem):
         n = (gt != self.pad_id).sum().item()
         max_len = tgt.shape[1] -2 # exclude <eos> from count
 
-        out = self.forward(images, max_len)
+
+        #forward
+        max_length = max_len
+        max_length = self.max_label_length if max_length is None else min(max_length, self.max_label_length)
+        bs = images.shape[0]
+        # +1 for <eos> at end of sequence.
+        num_steps = max_length + 1
+        x, memory = self.clip_encode(images)
+        #memory = self.encode(images)
+
+        # Query positions up to `num_steps`
+        pos_queries = self.pos_queries[:, :num_steps].expand(bs, -1, -1)
+
+        # Special case for the forward permutation. Faster than using `generate_attn_masks()`
+        #tgt_mask = query_mask = torch.triu(torch.full((num_steps, num_steps), float('-inf'), device=self._device), 1)
+
+        # No prior context, so input is just <bos>. We query all positions.
+        tgt_in = torch.full((bs, 1), self.bos_id, dtype=torch.long, device=self._device)
+        tgt_out, candidate_features, candidate_labels = self.decode(tgt_in, x, memory,tgt_query=pos_queries)
+        out = self.head(tgt_out)
+
+
 
         logits = out.flatten(end_dim=1)
         #print(logits.shape, gt.flatten().shape) #torch.Size([1664(고정), 37]) torch.Size([1024])
@@ -327,14 +353,21 @@ class PARCLIP(CrossEntropySystem):
             from torch.cuda.amp import GradScaler, autocast
             torch.autograd.set_detect_anomaly(True)
 
-
-            for i in labels[0]:
-                if self.candidate_label[i]:
-                    print("self.cand")
-
-            x, con_labels = self.simclr.info_nce_loss(x, self.candidate)
-            con_labels = con_labels.to(self._device)
+            idex = 0
+            temp = []
+            for label, candidate in zip(labels, candidate_labels):
+                if label in candidate:
+                    crt = candidate.index(label)
+                    del candidate_features[idex][crt]
+                a = torch.stack(candidate_features[idex], dim = 0)
+                #print(a.shape)
+                temp.append(a)
+                idex += 1
+            candidate_features = torch.cat(temp,dim=0)
+            x, con_labels = self.simclr.my_loss(x, candidate_features)
+            #print(x.shape, con_labels.shape)
             con_loss = self.criterion(x, con_labels)
+            #print(con_loss.shape)
             #scaler = GradScaler(enabled=True)
             #con_loss = scaler.scale(con_loss)
             #loss += 0.1* n * F.cross_entropy(x, con_labels, ignore_index=self.pad_id)
