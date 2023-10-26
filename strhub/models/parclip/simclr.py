@@ -56,22 +56,41 @@ class SimCLR(object):
         return logits, labels
     
     def my_loss(self, features, candidate, label):
+        #print(features.shape, candidate.shape, label.shape)
+        #torch.Size([32, 512]) torch.Size([159, 512]) torch.Size([32, 512])
+
         batch = []
-        #print(features.shape, candidate.shape)
-        #similarity_matrix = torch.matmul(img, txt.T)
-        img = features
-        txt = torch.cat((candidate,label), dim=0)
-        with torch.no_grad():
-            txt /= txt.norm(dim=-1, keepdim=True)
-            img /= img.norm(dim=-1, keepdim=True)
-        #print(torch.isnan(txt), torch.isnan(img))
-        #print(torch.isinf(txt), torch.isinf(img))
-        #print(img.shape, txt.shape)
-        similarity_matrix = torch.matmul(txt, img.T)
-        #print(similarity_matrix)
-        batch.append(similarity_matrix)
-        logits = torch.cat(batch, dim = 0)
-        negative = torch.zeros(logits.shape[0] -1, dtype=torch.long).to(self.device)
-        positive = torch.ones(1, dtype=torch.long).to(self.device)
-        labels = torch.cat((negative,positive),dim=0)
+        for img, txt, lb in zip(features, candidate, label):
+            #print(img.shape, txt.shape, lb.shape)
+            txt = torch.cat((lb.unsqueeze(0), txt), dim=0)
+            with torch.no_grad():
+                txt /= txt.norm(dim=-1, keepdim=True)
+                img /= img.norm(dim=-1, keepdim=True)
+                similarity_matrix = torch.matmul(txt, img.T).to(self.device)
+            similarity_matrix = similarity_matrix.unsqueeze(0)
+            batch.append(similarity_matrix)  
+        logits = torch.cat(batch,dim=0).to(self.device)
+
+        labels = torch.zeros(logits.shape[0], dtype=torch.long).to(self.device)
+        #positive = torch.ones(1, dtype=torch.long).to(self.device)
+        #labels = torch.cat((negative,positive),dim=0)
+        #labels = labels.repeat(features.shape[0], 1) #batch,lens
+        
+        #print(logits.shape, labels.shape)
+
+        # img = features
+        # txt = torch.cat((candidate,label), dim=0)
+        # with torch.no_grad():
+        #     txt /= txt.norm(dim=-1, keepdim=True)
+        #     img /= img.norm(dim=-1, keepdim=True)
+        # #print(img.shape, txt.shape)
+        # similarity_matrix = torch.matmul(txt, img.T)
+        # #print(similarity_matrix)
+        # batch.append(similarity_matrix)
+        # logits = torch.cat(batch, dim = 0)
+        # print(logits.shape) #torch.Size([191, 32])
+        # negative = torch.zeros(logits.shape[0] -1, dtype=torch.long).to(self.device)
+        # positive = torch.ones(1, dtype=torch.long).to(self.device)
+        # labels = torch.cat((negative,positive),dim=0)
+        # print(labels.shape) #torch.Size([192])
         return logits, labels

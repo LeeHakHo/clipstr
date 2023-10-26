@@ -148,8 +148,9 @@ class PARCLIP(CrossEntropySystem):
                 self.text_token = text_token
                 #self.text_features_tensor = torch.cat([self.txtencode(tokenized_text) for tokenized_text in text_token])
                 if self.load:
-                    self.text_features_tensor = torch.load('normal_seperate.pth').to(self._device)
+                    self.text_features_tensor = torch.load('normal_seperate.pth',  map_location=self._device)
                     print("load features", self.text_features_tensor.shape)
+                    #print(torch.isnan(self.text_features_tensor))
                 else:
                     text_features_list = []
                     i=0
@@ -194,6 +195,7 @@ class PARCLIP(CrossEntropySystem):
             tgt_list = GT
         elif self.text_pmt:
             self.text_features_tensor = self.text_features_tensor.to(torch.float32)
+            #print(torch.isnan(self.text_features_tensor))
             self.text_features = self.text_features_tensor.to(self._device)
         
         clip_pred =[]
@@ -209,8 +211,8 @@ class PARCLIP(CrossEntropySystem):
 
             clip_pred.append(self.text_token[indx])
 
-            candidate = []
             if self.contrastive:
+                candidate = []
                 candidate_l = []
                 for idx in indices:
                     candidate.append(self.text_features_tensor[idx])
@@ -323,6 +325,7 @@ class PARCLIP(CrossEntropySystem):
         # +1 for <eos> at end of sequence.
         num_steps = max_length + 1
         x, memory = self.clip_encode(images)
+        x = x.to(self._device)
         #memory = self.encode(images)
 
         # Query positions up to `num_steps`
@@ -349,8 +352,6 @@ class PARCLIP(CrossEntropySystem):
         #n = (tgt_out != self.pad_id).sum().item()
 
         #loss = F.cross_entropy(logits, gt.flatten(), ignore_index=self.pad_id)
-
-
         if self.contrastive:    
             from torch.cuda.amp import GradScaler, autocast
             torch.autograd.set_detect_anomaly(True)
@@ -360,7 +361,7 @@ class PARCLIP(CrossEntropySystem):
             probs = out.softmax(-1)
             preds, _ = self.tokenizer.decode(probs)
             idex = 0
-            for pred in zip(preds):
+            for pred in preds:
                 candidate_labels[idex].append(pred)
                 pred_token = clip.tokenize(f"{pred}").to(self._device)
                 pred_feature = self.txtencode(pred_token, normalize = True)
@@ -373,14 +374,19 @@ class PARCLIP(CrossEntropySystem):
             idex = 0
             temp = []
             for label, candidate in zip(labels, candidate_labels):
+                #print(torch.isnan(candidate_features[0][0]))
                 if label in candidate:
                     del candidate_features[idex][candidate.index(label)]
+                else:
+                    del candidate_features[idex][-2]
                 a = torch.stack(candidate_features[idex], dim = 0)
-                #print(a.shape)
+                a = a.unsqueeze(0)
                 temp.append(a)
                 idex += 1
-            candidate_features = torch.cat(temp,dim=0)
 
+            candidate_features = torch.cat(temp,dim=0).to(self._device)
+
+            #positive pair
             label_token = torch.cat([clip.tokenize(f"{c}") for c in labels]).to(self._device)
             label_list = []
             for tokenized_text in label_token:
@@ -388,23 +394,21 @@ class PARCLIP(CrossEntropySystem):
                 text_feature= self.txtencode(tokenized_text, normalize = True)
                 label_list.append(text_feature)
 
-            label_f = torch.cat(label_list, dim= 0)
-
+            label_f = torch.cat(label_list, dim= 0).to(self._device)
             x, con_labels = self.simclr.my_loss(x, candidate_features, label_f)
             #print(x.shape, con_labels.shape)
-            con_loss = self.criterion(x, con_labels)
-            #print(con_loss.shape)
+            con_loss = self.criterion(x, con_labels).to(self._device)
+            #print(con_loss)
             #scaler = GradScaler(enabled=True)
             #con_loss = scaler.scale(con_loss)
             #loss += 0.1* n * F.cross_entropy(x, con_labels, ignore_index=self.pad_id)
 
-
         loss /= loss_numel
         if self.contrastive:
-            total_loss = 0.95 * loss + 0.5 * con_loss
+            total_loss = 0.995 * loss + 0.005 * con_loss
         else:
             total_loss = loss
 
         self.log('loss', total_loss)
-        #print(loss) #tensor(4.1242, device='cuda:6', grad_fn=<DivBackward0>)
+        #print(total_loss) #tensor(4.1242, device='cuda:6', grad_fn=<DivBackward0>)
         return total_loss
