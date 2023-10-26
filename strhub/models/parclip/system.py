@@ -139,7 +139,6 @@ class PARCLIP(CrossEntropySystem):
             elif self.text_pmt:
             
                 self.label = self.label#[200000:]
-                i=0
                 print(len(self.label))
                 text_token =[]
                 for l in self.label:
@@ -153,10 +152,11 @@ class PARCLIP(CrossEntropySystem):
                     print("load features", self.text_features_tensor.shape)
                 else:
                     text_features_list = []
+                    i=0
                     for tokenized_text in text_token:
                         text_feature= self.txtencode(tokenized_text, normalize = True)
                         i += 1
-                        sys.stdout.write(" words encoded" + "\r" + str(self.i))
+                        sys.stdout.write(" words encoded" + "\r" + str(i))
                         sys.stdout.flush()
                         text_features_list.append(text_feature)
 
@@ -338,6 +338,8 @@ class PARCLIP(CrossEntropySystem):
 
 
 
+
+
         logits = out.flatten(end_dim=1)
         #print(logits.shape, gt.flatten().shape) #torch.Size([1664(고정), 37]) torch.Size([1024])
         loss = loss + (n * F.cross_entropy(logits, gt.flatten(), ignore_index=self.pad_id))
@@ -353,12 +355,26 @@ class PARCLIP(CrossEntropySystem):
             from torch.cuda.amp import GradScaler, autocast
             torch.autograd.set_detect_anomaly(True)
 
+
+            #linear layer pred candidate
+            probs = out.softmax(-1)
+            preds, _ = self.tokenizer.decode(probs)
+            idex = 0
+            for pred in zip(preds):
+                candidate_labels[idex].append(pred)
+                pred_token = clip.tokenize(f"{pred}").to(self._device)
+                pred_feature = self.txtencode(pred_token, normalize = True)
+                pred_feature = pred_feature.squeeze(0)
+                candidate_features[idex].append(pred_feature)
+                idex += 1
+
+
+            #Clip candidate
             idex = 0
             temp = []
             for label, candidate in zip(labels, candidate_labels):
                 if label in candidate:
-                    crt = candidate.index(label)
-                    del candidate_features[idex][crt]
+                    del candidate_features[idex][candidate.index(label)]
                 a = torch.stack(candidate_features[idex], dim = 0)
                 #print(a.shape)
                 temp.append(a)
@@ -385,7 +401,7 @@ class PARCLIP(CrossEntropySystem):
 
         loss /= loss_numel
         if self.contrastive:
-            total_loss = 0.95 * loss + 0.05 * con_loss
+            total_loss = 0.95 * loss + 0.5 * con_loss
         else:
             total_loss = loss
 
