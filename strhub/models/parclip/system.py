@@ -64,6 +64,7 @@ class PARCLIP(CrossEntropySystem):
 
         self.CLIPmodel, _ = clip.load('ViT-B/16')
         self.text_projection = self.CLIPmodel.text_projection
+        self.text_prompt = nn.Parameter(torch.randn([1, 4, 512]))
         # 모델 파라미터 고정하기
         for param in self.CLIPmodel.parameters():
             #param.requires_grad = False
@@ -136,7 +137,6 @@ class PARCLIP(CrossEntropySystem):
                 self.text_features = self.text_features.to(self._device)
                 self.text_features = self.text_features.to(torch.float32)
             elif self.text_pmt:
-                self.text_prompt = nn.Parameter(torch.randn([1, 4, 512]))
             
                 self.label = self.label#[200000:]
                 i=0
@@ -364,7 +364,17 @@ class PARCLIP(CrossEntropySystem):
                 temp.append(a)
                 idex += 1
             candidate_features = torch.cat(temp,dim=0)
-            x, con_labels = self.simclr.my_loss(x, candidate_features)
+
+            label_token = torch.cat([clip.tokenize(f"{c}") for c in labels]).to(self._device)
+            label_list = []
+            for tokenized_text in label_token:
+                tokenized_text = tokenized_text.unsqueeze(0)
+                text_feature= self.txtencode(tokenized_text, normalize = True)
+                label_list.append(text_feature)
+
+            label_f = torch.cat(label_list, dim= 0)
+
+            x, con_labels = self.simclr.my_loss(x, candidate_features, label_f)
             #print(x.shape, con_labels.shape)
             con_loss = self.criterion(x, con_labels)
             #print(con_loss.shape)
@@ -375,7 +385,7 @@ class PARCLIP(CrossEntropySystem):
 
         loss /= loss_numel
         if self.contrastive:
-            total_loss = 0.9 * loss + 0.1 * con_loss
+            total_loss = 0.95 * loss + 0.05 * con_loss
         else:
             total_loss = loss
 

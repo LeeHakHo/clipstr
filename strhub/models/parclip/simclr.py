@@ -55,12 +55,12 @@ class SimCLR(object):
         logits = logits / self.temperature
         return logits, labels
     
-    def my_loss(self, features, candidate):
+    def my_loss(self, features, candidate, label):
         batch = []
         #print(features.shape, candidate.shape)
         #similarity_matrix = torch.matmul(img, txt.T)
         img = features
-        txt = candidate
+        txt = torch.cat((candidate,label), dim=0)
         with torch.no_grad():
             txt /= txt.norm(dim=-1, keepdim=True)
             img /= img.norm(dim=-1, keepdim=True)
@@ -71,5 +71,7 @@ class SimCLR(object):
         #print(similarity_matrix)
         batch.append(similarity_matrix)
         logits = torch.cat(batch, dim = 0)
-        labels = torch.zeros(logits.shape[0], dtype=torch.long).to(self.device)
+        negative = torch.zeros(logits.shape[0] -1, dtype=torch.long).to(self.device)
+        positive = torch.ones(1, dtype=torch.long).to(self.device)
+        labels = torch.cat((negative,positive),dim=0)
         return logits, labels
