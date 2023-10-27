@@ -9,7 +9,11 @@ class SimCLR(object):
     def __init__(self, device):
         self.device = device
         self.temperature = 0.07
-    
+
+    @torch.jit.script
+    def dotProduct(image, text):
+        return (image @ text.T)
+
     def my_loss(self, features, candidate, label):
         batch = []
         for img, txt, lb in zip(features, candidate, label):
@@ -17,7 +21,7 @@ class SimCLR(object):
             with torch.no_grad():
                 txt /= txt.norm(dim=-1, keepdim=True)
                 img /= img.norm(dim=-1, keepdim=True)
-                similarity_matrix = torch.matmul(txt, img.T).to(self.device)
+                similarity_matrix = self.dotProduct(img, txt).to(self.device)
             similarity_matrix = similarity_matrix.unsqueeze(0)
             batch.append(similarity_matrix)  
         logits = torch.cat(batch,dim=0).to(self.device)
