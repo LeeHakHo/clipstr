@@ -309,12 +309,8 @@ class PARCLIP(CrossEntropySystem):
             idex = 0
             for pred in preds:
                 candidate_labels[idex].append(pred)
-                pred_token = clip.tokenize(f"{pred}").to(self._device)
-                pred_feature = self.txtencode(pred_token, normalize = True)
-                pred_feature = pred_feature.squeeze(0)
-                candidate_features[idex].append(pred_feature)
+                candidate_features[idex].append(self.txtencode(clip.tokenize(f"{pred}").to(self._device), normalize = True).squeeze(0))
                 idex += 1
-
 
             #Clip candidate
             idex = 0
@@ -327,12 +323,14 @@ class PARCLIP(CrossEntropySystem):
                 temp.append(cat(candidate_features[idex], dim = 0).unsqueeze(0))
                 idex += 1
 
-            candidate_features = cat(temp,dim=0).to(self._device)
+            candidate_features = torch.cat(temp,dim=0).to(self._device)
 
             #positive pair
             label_token = cat([clip.tokenize(f"{c}") for c in labels]).to(self._device)
-            label_f  = torch.cat([self.txtencode(tokenized_text.unsqueeze(0), normalize = True) for tokenized_text in label_token])
-
+            label_list = []
+            for tokenized_text in label_token:
+                label_list.append(self.txtencode(tokenized_text.unsqueeze(0), normalize = True))
+            label_f = cat(label_list, dim= 0).to(self._device)
 
             x, con_labels = self.simclr.my_loss(x, candidate_features, label_f)
             con_loss = self.criterion(x, con_labels).to(self._device)
