@@ -219,15 +219,8 @@ class VisionTransformer(nn.Module):
         self.ln_post = LayerNorm(width)
         self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
 
-    #LeeHakho
-    # @torch.jit.ignore
-    # def no_weight_decay(self):
-    #     return {'pos_embed', 'cls_token', 'dist_token'}
-
     def forward(self, x: torch.Tensor):
-        #print(x.shape) #768,3,112,112
         x = self.conv1(x)  # shape = [*, width, grid, grid]
-        #print(x.shape) #768,768,7,7
         x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
         x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
         x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)  # shape = [*, grid ** 2 + 1, width]
@@ -349,12 +342,9 @@ class CLIP(nn.Module):
         x = self.token_embedding(text).type(self.dtype)  # [batch_size, n_ctx, d_model]
         x = x + self.positional_embedding.type(self.dtype)
         x = x.permute(1, 0, 2)  # NLD -> LND
-        #self.transformer = self.transformer.to(device)
         x = self.transformer(x)
         x = x.permute(1, 0, 2)  # LND -> NLD
-        #self.ln_final = self.ln_final.to(device)
         x = self.ln_final(x).type(self.dtype)
-        # x.shape = [batch_size, n_ctx, transformer.width]
 
         # take features from the eot embedding (eot_token is the highest number in each sequence)
         if normalize:
