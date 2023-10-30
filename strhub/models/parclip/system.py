@@ -181,7 +181,7 @@ class PARCLIP(CrossEntropySystem):
             self.new = False
 
         if self.text_pmt:
-            text_features = text_features_tensor = self.text_features_tensor
+            text_features = text_features_tensor = self.text_features_tensor.to(torch.float32)
         
         clip_pred =[]
         candidate_features = []
@@ -190,7 +190,7 @@ class PARCLIP(CrossEntropySystem):
             with torch.no_grad():
                 text_features /= text_features.norm(dim=-1, keepdim=True)
                 image_features /= image_features.norm(dim=-1, keepdim=True)
-                similarity = self.dotProduct(image_features, text_features).softmax(dim=-1)
+                similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
 
             _, indices = similarity.topk(4)
             indx = indices[0]
@@ -328,7 +328,7 @@ class PARCLIP(CrossEntropySystem):
 
         loss /= loss_numel
         if self.contrastive:
-            total_loss = 0.9995 * loss + 0.0005 * con_loss
+            total_loss = 0.995 * loss + 0.005 * con_loss
         else:
             total_loss = loss
 
