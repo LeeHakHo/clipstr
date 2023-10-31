@@ -8,7 +8,7 @@ class SimCLR(object):
 
     def __init__(self, device):
         self.device = device
-        self.temperature = 0.07
+        self.temperature = 0.1
 
     @torch.jit.script
     def dotProduct(image, text):
@@ -25,6 +25,7 @@ class SimCLR(object):
             similarity_matrix = similarity_matrix.unsqueeze(0)
             batch.append(similarity_matrix)  
         logits = torch.cat(batch,dim=0).to(self.device)
+        logits = logits / self.temperature
 
         labels = torch.zeros(logits.shape[0], dtype=torch.long).to(self.device)
 

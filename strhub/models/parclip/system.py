@@ -63,7 +63,6 @@ class PARCLIP(CrossEntropySystem):
 
         self.CLIPmodel, _ = clip.load('ViT-B/16')
         self.text_projection = self.CLIPmodel.text_projection
-        self.text_prompt = nn.Parameter(torch.randn([1, 4, 512]))
 
         # 모델 파라미터 고정하기
         for param in self.CLIPmodel.parameters():
@@ -88,6 +87,9 @@ class PARCLIP(CrossEntropySystem):
         self.save = False #text prompt에서 encoding한 값을 저장할건지 여부
         self.contrastive = True #contrastive 사용 여부
 
+        self.prompt_len = 10 #text prompt 길이 
+        self.con_weight = 0.1 #conloss의 weight
+        self.text_prompt = nn.Parameter(torch.randn([1, self.prompt_len, 512]))
     #def no_weight_decay(self):
     #    param_names = {'text_embed.embedding.weight', 'pos_queries'}
     #    enc_param_names = {'encoder.' + n for n in self.encoder.no_weight_decay()}
@@ -328,7 +330,7 @@ class PARCLIP(CrossEntropySystem):
 
         loss /= loss_numel
         if self.contrastive:
-            total_loss = 0.995 * loss + 0.005 * con_loss
+            total_loss = 1.0 * loss + self.con_weight * con_loss
         else:
             total_loss = loss
 
