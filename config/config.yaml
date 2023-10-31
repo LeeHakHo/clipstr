@@ -6,22 +6,22 @@ model:
   max_label_length: 25
   charset_train: 0123456789abcdefghijklmnopqrstuvwxyz
   charset_test: 0123456789abcdefghijklmnopqrstuvwxyz
-  batch_size: 256
+  batch_size: 232
   weight_decay: 0.0
   warmup_pct: 0.075
   name: parclip
   _target_: strhub.models.parclip.system.PARCLIP
   patch_size:
-  - 4
-  - 8
+  - 16
+  - 16
   embed_dim: 512
-  enc_num_heads: 8
+  enc_num_heads: 12
   enc_mlp_ratio: 4
   enc_depth: 12
   dec_num_heads: 8
   dec_mlp_ratio: 4
   dec_depth: 1
-  lr: 0.0002
+  lr: 8.4e-05
   perm_num: 6
   perm_forward: false
   perm_mirrored: false
@@ -40,11 +40,11 @@ data:
   remove_whitespace: true
   normalize_unicode: true
   augment: true
-  num_workers: 8
+  num_workers: 16
 trainer:
   _target_: pytorch_lightning.Trainer
   _convert_: all
-  val_check_interval: 500
+  val_check_interval: 700
   max_epochs: 20
   gradient_clip_val: 20
   accelerator: gpu
