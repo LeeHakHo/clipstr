@@ -39,7 +39,6 @@ class PARCLIP(CrossEntropySystem):
         self.max_label_length = max_label_length
         self.decode_ar = decode_ar
         self.refine_iters = refine_iters
-
         decoder_layer = DecoderLayer(embed_dim, dec_num_heads, embed_dim * dec_mlp_ratio, dropout)
         self.decoder = Decoder(decoder_layer, num_layers=dec_depth, norm=nn.LayerNorm(embed_dim))
 
@@ -87,10 +86,11 @@ class PARCLIP(CrossEntropySystem):
         self.save = False #text prompt에서 encoding한 값을 저장할건지 여부
         self.contrastive = True #contrastive 사용 여부
 
-        self.prompt_len = 10 #text prompt 길이 
-        self.con_weight = 0.1 #conloss의 weight
+        self.prompt_len = 64 #text prompt 길이 
+        self.con_weight = 0.0 #conloss의 weight
         self.text_prompt = nn.Parameter(torch.randn([1, self.prompt_len, 512]))
-    #def no_weight_decay(self):
+        self.iter = 0
+    # def no_weight_decay(self):
     #    param_names = {'text_embed.embedding.weight', 'pos_queries'}
     #    enc_param_names = {'encoder.' + n for n in self.encoder.no_weight_decay()}
     #    return param_names.union(enc_param_names)
@@ -194,7 +194,7 @@ class PARCLIP(CrossEntropySystem):
                 image_features /= image_features.norm(dim=-1, keepdim=True)
                 similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
 
-            _, indices = similarity.topk(4)
+            _, indices = similarity.topk(32)
             indx = indices[0]
 
             clip_pred.append(self.text_token[indx])
@@ -311,9 +311,11 @@ class PARCLIP(CrossEntropySystem):
             #Clip candidate
             idex = 0
             temp = []
+            #contain =0
             for label, candidate in zip(labels, candidate_labels):
                 if label in candidate:
                     del candidate_features[idex][candidate.index(label)]
+                    #contain = contain + 1
                 else:
                     del candidate_features[idex][-2]
                 temp.append(torch.stack(candidate_features[idex], dim = 0).unsqueeze(0))
@@ -330,9 +332,16 @@ class PARCLIP(CrossEntropySystem):
 
         loss /= loss_numel
         if self.contrastive:
-            total_loss = 1.0 * loss + self.con_weight * con_loss
+            total_loss = (1.0 - self.con_weight) * loss + self.con_weight * con_loss
+            if self.iter < 1725:
+                self.iter = self.iter + 1
+            else:
+                self.con_weight = self.con_weight + 0.05
+                self.iter = 0
+                print("con_weight= ", self.con_weight)
         else:
             total_loss = loss
 
         self.log('loss', total_loss)
+        #print(" Clip candidate contain" + "\r" + str(contain))
         return total_loss
