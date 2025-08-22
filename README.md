@@ -1,64 +1,6 @@
 <div align="center">
-Scene Text Recognition with<br/>Permuted Autoregressive Sequence Models
-
-
-
-
-
-
-
-
-Darwin Bautista
- and Rowel Atienza
-
-Electrical and Electronics Engineering Institute • University of the Philippines, Diliman
-
-Method
- • Sample Results
- • Getting Started
- • CLIP-Enhanced PARSeq
- • Training
- • Evaluation
- • Tuning
- • Citation
-
-</div>
-
-Scene Text Recognition (STR) models use language context to be more robust against noisy or corrupted images. Recent approaches like ABINet use a standalone Language Model (LM) for refinement. We show that an external LM—requiring dedicated compute—is inefficient for STR, and propose permuted autoregressive sequence (PARSeq) models as a more efficient alternative. See our ECCV poster
- and presentation
-.
-
-Note: P-S and P-Ti denote PARSeq-S and PARSeq-Ti.
-
-Method tl;dr
-
-Our key insight: by viewing decoding as an ensemble of autoregressive (AR) models with different masks, one transformer can unify context-aware AR, context-free non-AR, and bidirectional (cloze-style) refinement.
-
-<div align="center"> <img src=".github/contexts-example.png" alt="Unified STR model" width="75%"/> </div>
-
-A single Transformer becomes a unified STR model—PARSeq—by training with Permutation Language Modeling, enabling predictions at arbitrary positions given arbitrary context, and supporting iterative refinement without a standalone LM.
-
-<div align="center"> <img src=".github/system.png" alt="System" width="88%"/> </div>
-
-Details: LayerNorm/Dropout omitted. Tokens: [B] (BOS), [E] (EOS), [P] (PAD). T=25 → 26 position tokens that act as both queries and position embeddings (none added for [B]). Masks come from permutations and are used only for context-position attention. Loss is cross-entropy 
-𝐿
-_
-𝑐
-𝑒
-L_ce.
-
-Sample Results
-<div align="center">
-Input Image	PARSeq-S<sub>A</sub>	ABINet	TRBA	ViTSTR-S	CRNN
-<img src="demo_images/art-01107.jpg" alt="CHEWBACCA" width="128"/>	CHEWBACCA	CHEWBAGGA	CHEWBACCA	CHEWBACCA	CHEWUACCA
-<img src="demo_images/coco-1166773.jpg" alt="Chevron" width="128"/>	Chevrol	Chevro_	Chevro_	Chevr__	Chevr__
-<img src="demo_images/cute-184.jpg" alt="SALMON" height="128"/>	SALMON	SALMON	SALMON	SALMON	SA_MON
-<img src="demo_images/ic13_word_256.png" alt="Verbandstoffe" width="128"/>	Verbandsteffe	Verbandsteffe	Verbandstelle	Verbandsteffe	Verbandsleffe
-<img src="demo_images/ic15_word_26.png" alt="Kappa" width="128"/>	Kappa	Kappa	Kaspa	Kappa	Kaada
-<img src="demo_images/uber-27491.jpg" alt="3rdAve" height="128"/>	3rdAve	3=-Ave	3rdAve	3rdAve	Coke
-
-Bold = wrong character, _ = missing character.
-
+Scene Text Recognition with<br/>CLIP-Enhanced PARSeq for Scene Text Recognition
+ 
 </div>
 Getting Started
 
