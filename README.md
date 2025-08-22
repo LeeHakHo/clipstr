@@ -1,3 +1,4 @@
+<div align="center">
 Scene Text Recognition with<br/>Permuted Autoregressive Sequence Models
 
 
@@ -10,36 +11,41 @@ Scene Text Recognition with<br/>Permuted Autoregressive Sequence Models
 Darwin Bautista
  and Rowel Atienza
 
-Electrical and Electronics Engineering Institute<br/>
-University of the Philippines, Diliman
+Electrical and Electronics Engineering Institute • University of the Philippines, Diliman
 
 Method
- | Sample Results
- | Getting Started
- | CLIP-Enhanced PARSeq (optional)
- | Training
- | Evaluation
- | Tuning
- | Citation
+ • Sample Results
+ • Getting Started
+ • CLIP-Enhanced PARSeq
+ • Training
+ • Evaluation
+ • Tuning
+ • Citation
 
 </div>
 
-Scene Text Recognition (STR) models use language context to be more robust against noisy or corrupted images. Recent approaches like ABINet use a standalone or external Language Model (LM) for prediction refinement. In this work, we show that the external LM—which requires upfront allocation of dedicated compute capacity—is inefficient for STR due to its poor performance vs cost characteristics. We propose a more efficient approach using permuted autoregressive sequence (PARSeq) models. View our ECCV poster
+Scene Text Recognition (STR) models use language context to be more robust against noisy or corrupted images. Recent approaches like ABINet use a standalone Language Model (LM) for refinement. We show that an external LM—requiring dedicated compute—is inefficient for STR, and propose permuted autoregressive sequence (PARSeq) models as a more efficient alternative. See our ECCV poster
  and presentation
- for a brief overview.
+.
 
-NOTE: P-S and P-Ti are shorthands for PARSeq-S and PARSeq-Ti, respectively.
+Note: P-S and P-Ti denote PARSeq-S and PARSeq-Ti.
 
 Method tl;dr
 
-Our main insight is that with an ensemble of autoregressive (AR) models, we could unify the current STR decoding methods (context-aware AR and context-free non-AR) and the bidirectional (cloze) refinement model:
+Our key insight: by viewing decoding as an ensemble of autoregressive (AR) models with different masks, one transformer can unify context-aware AR, context-free non-AR, and bidirectional (cloze-style) refinement.
 
-<div align="center"><img src=".github/contexts-example.png" alt="Unified STR model" width="75%"/></div>
+<div align="center"> <img src=".github/contexts-example.png" alt="Unified STR model" width="75%"/> </div>
 
-A single Transformer can realize different models by merely varying its attention mask. With the correct decoder parameterization, it can be trained with Permutation Language Modeling to enable inference for arbitrary output positions given arbitrary subsets of the input context. This arbitrary decoding characteristic results in a unified STR model—PARSeq—capable of context-free and context-aware inference, as well as iterative prediction refinement using bidirectional context without requiring a standalone language model. PARSeq can be considered an ensemble of AR models with shared architecture and weights:
+A single Transformer becomes a unified STR model—PARSeq—by training with Permutation Language Modeling, enabling predictions at arbitrary positions given arbitrary context, and supporting iterative refinement without a standalone LM.
 
+<div align="center"> <img src=".github/system.png" alt="System" width="88%"/> </div>
 
-NOTE: LayerNorm and Dropout layers are omitted. [B], [E], and [P] stand for beginning-of-sequence (BOS), end-of-sequence (EOS), and padding tokens, respectively. T = 25 results in 26 distinct position tokens. The position tokens both serve as query vectors and position embeddings for the input context. For [B], no position embedding is added. Attention masks are generated from the given permutations and are used only for the context-position attention. L<sub>ce</sub> pertains to the cross-entropy loss.
+Details: LayerNorm/Dropout omitted. Tokens: [B] (BOS), [E] (EOS), [P] (PAD). T=25 → 26 position tokens that act as both queries and position embeddings (none added for [B]). Masks come from permutations and are used only for context-position attention. Loss is cross-entropy 
+𝐿
+_
+𝑐
+𝑒
+L_ce.
 
 Sample Results
 <div align="center">
@@ -51,19 +57,22 @@ Input Image	PARSeq-S<sub>A</sub>	ABINet	TRBA	ViTSTR-S	CRNN
 <img src="demo_images/ic15_word_26.png" alt="Kappa" width="128"/>	Kappa	Kappa	Kaspa	Kappa	Kaada
 <img src="demo_images/uber-27491.jpg" alt="3rdAve" height="128"/>	3rdAve	3=-Ave	3rdAve	3rdAve	Coke
 
-NOTE: Bold letters and underscores indicate wrong and missing character predictions, respectively.
+Bold = wrong character, _ = missing character.
 
 </div>
 Getting Started
+
+Most code is under Apache-2.0 (see LICENSE). Reproduced ABINet and CRNN sources follow their BSD/MIT licenses (see their LICENSE files). See NOTICE for copyright.
+
 Installation
 
-Requires Python >= 3.8 and PyTorch >= 1.10 (until 1.13).
+Requires Python ≥ 3.8 and PyTorch ≥ 1.10 (≤ 1.13).
 
-# 1) Choose your torch platform build (cpu/cu116/cu117/rocm5.2)
+# Choose your PyTorch build: cpu | cu116 | cu117 | rocm5.2
 platform=cpu
 make torch-${platform}
 
-# 2) Install core + train + test deps
+# Install core + train + test dependencies
 pip install -r requirements/core.${platform}.txt -e .[train,test]
 
 # (Optional) For CLIP encoder support
@@ -71,14 +80,12 @@ pip install git+https://github.com/openai/CLIP.git
 
 Datasets
 
-Download the datasets
- from the following links:
+See Datasets.md
+.
 
-LMDB archives
- for MJSynth, SynthText, IIIT5k, SVT, SVTP, IC13, IC15, CUTE80, ArT, RCTW17, ReCTS, LSVT, MLT19, COCO-Text, and Uber-Text.
+LMDB archives for MJSynth, SynthText, IIIT5k, SVT, SVTP, IC13, IC15, CUTE80, ArT, RCTW17, ReCTS, LSVT, MLT19, COCO-Text, Uber-Text.
 
-LMDB archives
- for TextOCR and OpenVINO.
+LMDB archives for TextOCR and OpenVINO.
 
 Pretrained via Torch Hub (baseline PARSeq)
 import torch
@@ -91,87 +98,115 @@ img_transform = SceneTextDataModule.get_transform(parseq.hparams.img_size)
 img = Image.open('/path/to/image.png').convert('RGB')
 img = img_transform(img).unsqueeze(0)  # (B, C, H, W)
 
-logits = parseq(img)
+logits = parseq(img)                   # [B, 26, 95] (94 chars + [EOS])
 pred = logits.softmax(-1)
 label, confidence = parseq.tokenizer.decode(pred)
 print('Decoded label =', label[0])
 
 CLIP-Enhanced PARSeq (optional)
 
-What is this?
-We add an option to use a CLIP ViT image encoder (e.g., ViT-B/32) as the visual backbone of PARSeq. The decoder, tokenizer, and PARSeq’s permuted AR training remain the same; only the image encoder is swapped to leverage CLIP’s robust visual features.
+This repo adds an optional mode that swaps PARSeq’s visual backbone with a CLIP ViT encoder (e.g., ViT-B/32) while keeping the PARSeq decoder, tokenizer, and permuted AR training intact. This leverages CLIP’s robust image features for STR.
 
-Key points
+Highlights
 
-Encoder: CLIP ViT (default: ViT-B/32).
+Encoder: CLIP ViT (default: vit_b32).
 
-Normalization: CLIP mean/std; CLIP resize/crop or letterbox (depending on your implementation).
+Preprocess: CLIP mean/std and resizing; keep PARSeq text pipeline unchanged.
 
-Training: either freeze the CLIP encoder for a few epochs then unfreeze, or fine-tune end-to-end from the start.
+Training: Start with the CLIP encoder frozen, then unfreeze, or fine-tune end-to-end.
 
-Quick commands (pick the one that matches your repo setup)
+Train (pick one that matches your config names)
 
-# A) If you have a ready experiment config
+# Preconfigured experiment
 ./train.py +experiment=parseq-clip-b32 trainer.accelerator=gpu trainer.precision=16
 
-# B) Or explicit overrides (example names; adjust to your actual arg keys)
+# Explicit overrides (example arg names; adapt to your code)
 ./train.py model.encoder=clip_vit_b32 data.normalize=clip model.img_size=[224,224] \
            trainer.accelerator=gpu trainer.precision=16
 
 
-Inference / Evaluation with a CLIP-PARSeq checkpoint
+Inference / Evaluation
 
-# Inference on a folder of images
+# Read images with a CLIP-PARSeq checkpoint
 ./read.py /path/to/clip_parseq.ckpt --images demo_images/* \
           refine_iters:int=2 decode_ar:bool=false
 
-# Evaluate on benchmarks
+# Evaluate on benchmarks (mixed-case + punctuation)
 ./test.py /path/to/clip_parseq.ckpt --cased --punctuation --batch_size 512 --num_workers 16
 
 Training
 
-You can override any configuration from the CLI (Hydra). See ./train.py --help.
+You can override any configuration via CLI (Hydra). See ./train.py --help.
 
 # Finetune using pretrained weights (baseline)
-./train.py pretrained=parseq-tiny
+./train.py pretrained=parseq-tiny          # Not all experiments have pretrained weights
 
-# Train a model variant/preconfigured experiment
-./train.py +experiment=parseq-tiny
+# Train a variant / preconfigured experiment
+./train.py +experiment=parseq-tiny         # e.g., abinet-sv, trbc
 
 # Character set
-./train.py charset=94_full             # or 36_lowercase / 62_mixed-case
+./train.py charset=94_full                 # or 36_lowercase / 62_mixed-case
 
-# Dataset choice
-./train.py dataset=real                # or synth
+# Dataset
+./train.py dataset=real                    # or synth
 
-# Typical trainer flags
+# Data settings
+./train.py data.root_dir=data data.num_workers=2 data.augment=true
+
+# General model knobs
+./train.py model.img_size=[32,128] model.max_label_length=25 model.batch_size=384
+
+# Lightning Trainer
 ./train.py trainer.max_epochs=20 trainer.accelerator=gpu trainer.devices=2
+# (Use +param=... for fields not in configs/main.yaml)
 
 Evaluation
 
-test.py evaluates any trained checkpoint. You may pass PARSeq runtime params as param:type=value.
+test.py evaluates any trained checkpoint. Runtime params use param:type=value.
 
-# Baseline evaluation (36-char set)
+# Baseline (36-char set)
 ./test.py outputs/<model>/<ts>/checkpoints/last.ckpt
 
-# Mixed-case + punctuation (94-char set)
+# Mixed-case (62) or 94-char set
+./test.py outputs/<model>/<ts>/checkpoints/last.ckpt --cased
 ./test.py outputs/<model>/<ts>/checkpoints/last.ckpt --cased --punctuation
 
-# PARSeq NAR decoding with 2 refinement iters
+# NAR decoding + 2 refinement iterations
 ./test.py outputs/<model>/<ts>/checkpoints/last.ckpt refine_iters:int=2 decode_ar:bool=false
 
 
-Example output format
+Example output
 
 | Dataset   | # samples | Accuracy | 1 - NED | Confidence | Label Length |
 | IIIT5k    |      3000 |    99.00 |   99.79 |      97.09 |         5.09 |
-...
-| Combined  |     7672  |    95.95 |   98.78 |      95.34 |         5.33 |
+| SVT       |       647 |    97.84 |   99.54 |      95.87 |         5.86 |
+| ...       |        ...|      ... |     ... |        ... |          ... |
+| Combined  |      7672 |    95.95 |   98.78 |      95.34 |         5.33 |
+
+
+Benchmarks & Utilities
+
+# Compute requirements (Figure 5)
+./bench.py model=parseq model.decode_ar=false model.refine_iters=3
+
+# Latency vs label length (Appendix I)
+./bench.py model=parseq model.decode_ar=false model.refine_iters=3 +range=true
+
+# Orientation robustness (Appendix J)
+./test.py <ckpt> --cased --punctuation              # 0°
+./test.py <ckpt> --cased --punctuation --rotation 90
+./test.py <ckpt> --cased --punctuation --rotation 180
+./test.py <ckpt> --cased --punctuation --rotation 270
+
+# Read images (Appendix L)
+./read.py <ckpt_or_pretrained> --images demo_images/*
+# e.g., NAR + 2 iters
+./read.py pretrained=parseq refine_iters:int=2 decode_ar:bool=false --images demo_images/*
 
 Tuning
 
 We use Ray Tune
- for automated LR search. See ./tune.py --help.
+ for LR search. See ./tune.py --help.
 
 ./tune.py tune.num_samples=20
 ./tune.py +experiment=tune_abinet-lm
