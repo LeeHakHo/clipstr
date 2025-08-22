@@ -1,6 +1,8 @@
 <div align="center">
-Scene Text Recognition with<br/>CLIP-Enhanced PARSeq for Scene Text Recognition
- 
+Scene Text Recognition with<br/>CLIP-Enhanced PARSeq with contrastive learning for Scene Text Recognition
+
+
+
 </div>
 Getting Started
 
