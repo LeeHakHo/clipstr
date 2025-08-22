@@ -1,3 +1,59 @@
+Scene Text Recognition with<br/>Permuted Autoregressive Sequence Models
+
+
+
+
+
+
+
+
+Darwin Bautista
+ and Rowel Atienza
+
+Electrical and Electronics Engineering Institute<br/>
+University of the Philippines, Diliman
+
+Method
+ | Sample Results
+ | Getting Started
+ | CLIP-Enhanced PARSeq (optional)
+ | Training
+ | Evaluation
+ | Tuning
+ | Citation
+
+</div>
+
+Scene Text Recognition (STR) models use language context to be more robust against noisy or corrupted images. Recent approaches like ABINet use a standalone or external Language Model (LM) for prediction refinement. In this work, we show that the external LM—which requires upfront allocation of dedicated compute capacity—is inefficient for STR due to its poor performance vs cost characteristics. We propose a more efficient approach using permuted autoregressive sequence (PARSeq) models. View our ECCV poster
+ and presentation
+ for a brief overview.
+
+NOTE: P-S and P-Ti are shorthands for PARSeq-S and PARSeq-Ti, respectively.
+
+Method tl;dr
+
+Our main insight is that with an ensemble of autoregressive (AR) models, we could unify the current STR decoding methods (context-aware AR and context-free non-AR) and the bidirectional (cloze) refinement model:
+
+<div align="center"><img src=".github/contexts-example.png" alt="Unified STR model" width="75%"/></div>
+
+A single Transformer can realize different models by merely varying its attention mask. With the correct decoder parameterization, it can be trained with Permutation Language Modeling to enable inference for arbitrary output positions given arbitrary subsets of the input context. This arbitrary decoding characteristic results in a unified STR model—PARSeq—capable of context-free and context-aware inference, as well as iterative prediction refinement using bidirectional context without requiring a standalone language model. PARSeq can be considered an ensemble of AR models with shared architecture and weights:
+
+
+NOTE: LayerNorm and Dropout layers are omitted. [B], [E], and [P] stand for beginning-of-sequence (BOS), end-of-sequence (EOS), and padding tokens, respectively. T = 25 results in 26 distinct position tokens. The position tokens both serve as query vectors and position embeddings for the input context. For [B], no position embedding is added. Attention masks are generated from the given permutations and are used only for the context-position attention. L<sub>ce</sub> pertains to the cross-entropy loss.
+
+Sample Results
+<div align="center">
+Input Image	PARSeq-S<sub>A</sub>	ABINet	TRBA	ViTSTR-S	CRNN
+<img src="demo_images/art-01107.jpg" alt="CHEWBACCA" width="128"/>	CHEWBACCA	CHEWBAGGA	CHEWBACCA	CHEWBACCA	CHEWUACCA
+<img src="demo_images/coco-1166773.jpg" alt="Chevron" width="128"/>	Chevrol	Chevro_	Chevro_	Chevr__	Chevr__
+<img src="demo_images/cute-184.jpg" alt="SALMON" height="128"/>	SALMON	SALMON	SALMON	SALMON	SA_MON
+<img src="demo_images/ic13_word_256.png" alt="Verbandstoffe" width="128"/>	Verbandsteffe	Verbandsteffe	Verbandstelle	Verbandsteffe	Verbandsleffe
+<img src="demo_images/ic15_word_26.png" alt="Kappa" width="128"/>	Kappa	Kappa	Kaspa	Kappa	Kaada
+<img src="demo_images/uber-27491.jpg" alt="3rdAve" height="128"/>	3rdAve	3=-Ave	3rdAve	3rdAve	Coke
+
+NOTE: Bold letters and underscores indicate wrong and missing character predictions, respectively.
+
+</div>
 Getting Started
 Installation
 
@@ -119,3 +175,17 @@ We use Ray Tune
 
 ./tune.py tune.num_samples=20
 ./tune.py +experiment=tune_abinet-lm
+
+Citation
+@InProceedings{bautista2022parseq,
+  title={Scene Text Recognition with Permuted Autoregressive Sequence Models},
+  author={Bautista, Darwin and Atienza, Rowel},
+  booktitle={European Conference on Computer Vision},
+  pages={178--196},
+  month={10},
+  year={2022},
+  publisher={Springer Nature Switzerland},
+  address={Cham},
+  doi={10.1007/978-3-031-19815-1_11},
+  url={https://doi.org/10.1007/978-3-031-19815-1_11}
+}
