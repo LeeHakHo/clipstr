@@ -1,6 +1,13 @@
 <div align="center">
 Scene Text Recognition with<br/>CLIP-Enhanced PARSeq with contrastive learning for Scene Text Recognition
 
+<div align="center">
+  <img src=".github/struture.png" alt="PARSeq teaser" width="70%" />
+</div>
+
+<div align="center">
+  <img src=".github/result.png" alt="PARSeq teaser" width="70%" />
+</div>
 
 
 </div>
