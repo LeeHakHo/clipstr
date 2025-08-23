@@ -1,4 +1,4 @@
-## STR with CLIP-Enhanced PARSeq with contrastive learning for Scene Text Recognition
+## ParClip - STR with CLIP-based PARSeq with contrastive learning for Scene Text Recognition
 <div align="left">
 <div align="left">
   <img src="structure.png" alt="CLIPSTR_structure" width="70%" />
