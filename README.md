@@ -9,6 +9,8 @@ Scene Text Recognition with CLIP-Enhanced PARSeq with contrastive learning for S
   <img src="result.png" alt="CLIPSTR_example" width="70%" />
 </div>
 
+
+</div>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -75,6 +77,7 @@ python3 train.py \
 
 </body>
 
+<div>
 # Scene Text Recognition with<br/>Permuted Autoregressive Sequence Models
 [![Apache License 2.0](https://img.shields.io/github/license/baudm/parseq)](https://github.com/baudm/parseq/blob/main/LICENSE)
 [![arXiv preprint](http://img.shields.io/badge/arXiv-2207.06966-b31b1b)](https://arxiv.org/abs/2207.06966)
