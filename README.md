@@ -10,7 +10,7 @@ Scene Text Recognition with CLIP-Enhanced PARSeq with contrastive learning for S
 </div>
 
 <!DOCTYPE html>
-<html lang="en" align="left">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>ParClip Training Guide</title>
