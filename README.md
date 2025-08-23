@@ -1,4 +1,4 @@
-## ParClip - STR with CLIP-based PARSeq with contrastive learning for Scene Text Recognition
+## CLIPSTR - CLIP-based PARSeq with contrastive learning for Scene Text Recognition
 <div align="left">
 <div align="left">
   <img src="structure.png" alt="CLIPSTR_structure" width="70%" />
@@ -9,7 +9,7 @@
 </div>
 
 
-  <h1>ParClip Training Instructions</h1>
+  <h1>CLIPSTR Training Instructions</h1>
 
   <h2>1. Project Directory</h2>
   <p><code>/home/ohh/PycharmProject/clipseq/</code></p>
