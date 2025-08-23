@@ -1,4 +1,4 @@
-## CLIPSTR - VLM-based model with contrastive learning for Scene Text Recognition
+## VLM-based model with contrastive learning for Scene Text Recognition
 <div align="left">
 <div align="left">
   <img src="structure.png" alt="CLIPSTR_structure" width="70%" />
