@@ -9,6 +9,72 @@ Scene Text Recognition with CLIP-Enhanced PARSeq with contrastive learning for S
   <img src="result.png" alt="CLIPSTR_example" width="70%" />
 </div>
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ParClip Training Guide</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }
+    h1, h2 { color: #333; }
+    pre { background: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto; }
+    code { font-family: Consolas, monospace; }
+    ul, ol { margin-left: 20px; }
+  </style>
+</head>
+<body>
+
+  <h1>ParClip Training Instructions</h1>
+
+  <h2>1. Project Directory</h2>
+  <p><code>/home/ohh/PycharmProject/clipseq/</code></p>
+
+  <h2>2. Execution Command</h2>
+  <pre><code>CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NCCL_P2P_DISABLE=1 \
+HYDRA_FULL_ERROR=1 \
+python3 train.py \
+  +experiment=parclip \
+  dataset=real \
+  charset=36_lowercase
+</code></pre>
+
+  <h2>3. Key Code Files</h2>
+  <ul>
+    <li><code>/strhub/models/parclip/system.py</code></li>
+    <li><code>/strhub/models/parclip/simclr.py</code></li>
+  </ul>
+
+  <h2>4. Experiment Setup</h2>
+  <ol>
+    <li>
+      Base configuration: <code>/configs/main.yaml</code>.  
+      Adjust dataset paths, batch sizes, or learning rates there.
+    </li>
+    <li>
+      For fresh encoding + contrastive training, in <code>system.py</code> set:
+      <ul>
+        <li><code>self.prompt      = True</code></li>
+        <li><code>self.new         = True</code></li>
+        <li><code>self.contrastive = True</code></li>
+        <li>All other flags (<code>load</code>, <code>save</code>, etc.) = <code>False</code></li>
+      </ul>
+      To persist encoded features, also set <code>self.save = True</code>.
+    </li>
+    <li>
+      To skip encoding and reuse saved features, in <code>system.py</code> set:
+      <ul>
+        <li><code>self.prompt = True</code></li>
+        <li><code>self.new    = True</code></li>
+        <li><code>self.load   = True</code></li>
+        <li>All other flags = <code>False</code></li>
+      </ul>
+      This will load precomputed embeddings and resume training without re-encoding.
+    </li>
+  </ol>
+
+</body>
+
 # Scene Text Recognition with<br/>Permuted Autoregressive Sequence Models
 [![Apache License 2.0](https://img.shields.io/github/license/baudm/parseq)](https://github.com/baudm/parseq/blob/main/LICENSE)
 [![arXiv preprint](http://img.shields.io/badge/arXiv-2207.06966-b31b1b)](https://arxiv.org/abs/2207.06966)
